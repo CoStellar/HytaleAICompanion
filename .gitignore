@@ -1,0 +1,33 @@
+# ==========================================
+# Środowisko Programistyczne (IntelliJ itp.)
+# ==========================================
+.idea/
+*.iml
+*.iws
+out/
+bin/
+app/bin/
+
+# ==========================================
+# Cache i buildy Gradle (Zajmują mnóstwo miejsca)
+# ==========================================
+.gradle/
+build/
+app/build/
+
+# ==========================================
+# PLIKI ZASSTRZEŻONE (Hytale Server)
+# ==========================================
+# Blokujemy bibliotekę serwera i wszelkie instancje, które mogłyby powstać
+app/libs/HytaleServer*.jar
+HytaleServer*.jar
+server.properties
+eula.txt
+world/
+logs/
+crash-reports/
+
+# ==========================================
+# DANE WRAŻLIWE (Bazy danych AI, klucze API)
+# ==========================================
+mods/AICompanion/players/

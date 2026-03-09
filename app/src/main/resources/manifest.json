@@ -1,0 +1,8 @@
+{
+  "Group": "hytale.ai",
+  "Name": "HytaleAIProject",
+  "Version": "1.0.0",
+  "Description": "Mod dodajacy NPC opartego na LLM",
+  "Main": "hytale.ai.HytaleAIMod",
+  "ServerVersion": "2026.02.19"
+}
