@@ -5,6 +5,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.inventory.Inventory;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
+import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap;
 import com.hypixel.hytale.server.core.modules.entitystats.EntityStatValue;
@@ -17,106 +18,181 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.core.modules.entity.component.ModelComponent;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Klasa narzędziowa pełniąca rolę "zmysłów" sztucznej inteligencji.
+ * Klasa narzędziowa pełniąca rolę zmysłów sztucznej inteligencji.
  */
 public class WorldContextBuilder {
 
     private WorldContextBuilder() {}
 
-    /**
-     * Buduje dynamiczny kontekst środowiskowy z uwzględnieniem fizycznej lokalizacji kompana.
-     * @param playerRef Referencja do gracza.
-     * @param companionRef Referencja do fizycznego ciała kompana (może być null, jeśli jest schowany).
-     * @return Sformatowany tekst (String).
-     */
     public static String buildContext(Ref<EntityStore> playerRef, Ref<EntityStore> companionRef) {
         StringBuilder context = new StringBuilder();
-        context.append("--- KONTEKST ŚRODOWISKOWY W GRZE (Zmienia się dynamicznie) ---\n");
+        context.append("--- KONTEKST ŚRODOWISKOWY W GRZE ---\n");
 
         if (playerRef == null || !playerRef.isValid()) {
             return context.append("Brak danych o graczu.\n\n").toString();
         }
 
         Store<EntityStore> store = playerRef.getStore();
-        // POPRAWKA: Usunięto zbędne rzutowanie
         World world = store.getExternalData().getWorld();
         TransformComponent playerTransform = store.getComponent(playerRef, TransformComponent.getComponentType());
 
-        // 1. Zdrowie
-        EntityStatMap stats = store.getComponent(playerRef, EntityStatMap.getComponentType());
-        if (stats != null) {
-            int healthIndex = DefaultEntityStatTypes.getHealth();
-            EntityStatValue healthStat = stats.get(healthIndex);
-            if (healthStat != null) {
-                int currentHp = (int) healthStat.get();
-                int maxHp = (int) healthStat.getMax();
-                context.append("Punkty Zdrowia Gracza (HP): ").append(currentHp).append(" / ").append(maxHp);
-                if (currentHp < maxHp / 3) context.append(" [UWAGA: Gracz jest ciężko ranny!]\n");
+        // ==========================================
+        // 1. ZDROWIE GRACZA I KOMPANA
+        // ==========================================
+        EntityStatMap playerStats = store.getComponent(playerRef, EntityStatMap.getComponentType());
+        if (playerStats != null) {
+            EntityStatValue hpStat = playerStats.get(DefaultEntityStatTypes.getHealth());
+            if (hpStat != null) {
+                int hp = (int) hpStat.get();
+                int maxHp = (int) hpStat.getMax();
+                context.append("Zdrowie Gracza: ").append(hp).append("/").append(maxHp);
+                if (hp < maxHp / 3) context.append(" [UWAGA: GRACZ CIĘŻKO RANNY!]\n");
                 else context.append("\n");
             }
-            int oxygenIndex = DefaultEntityStatTypes.getOxygen();
-            EntityStatValue oxygenStat = stats.get(oxygenIndex);
-            if (oxygenStat != null && oxygenStat.get() < oxygenStat.getMax()) {
-                context.append(" [UWAGA: Gracz traci tlen, dusi się pod wodą!]\n");
+        }
+
+        if (companionRef != null && companionRef.isValid()) {
+            EntityStatMap compStats = store.getComponent(companionRef, EntityStatMap.getComponentType());
+            if (compStats != null) {
+                EntityStatValue compHpStat = compStats.get(DefaultEntityStatTypes.getHealth());
+                if (compHpStat != null) {
+                    int compHp = (int) compHpStat.get();
+                    int compMaxHp = (int) compHpStat.getMax();
+                    context.append("Twoje Zdrowie (AI): ").append(compHp).append("/").append(compMaxHp);
+                    if (compHp < compMaxHp / 3) context.append(" [UWAGA: JESTEŚ BLISKI ŚMIERCI!]\n");
+                    else context.append("\n");
+                }
             }
         }
 
-        // 2. Ekwipunek
+        // ==========================================
+        // 2. EKWIPUNEK I PANCERZ GRACZA
+        // ==========================================
         Player playerComponent = store.getComponent(playerRef, Player.getComponentType());
-        if (playerComponent != null) {
-            Inventory inventory = playerComponent.getInventory();
-            if (inventory != null) {
-                ItemStack itemInHand = inventory.getItemInHand();
-                if (itemInHand != null && !itemInHand.isEmpty()) {
-                    context.append("Gracz trzyma w dłoni: ").append(itemInHand.getItemId()).append("\n");
-                } else context.append("Gracz ma puste dłonie.\n");
+        if (playerComponent != null && playerComponent.getInventory() != null) {
+            Inventory inv = playerComponent.getInventory();
 
-                com.hypixel.hytale.server.core.inventory.container.ItemContainer armorContainer = inventory.getArmor();
-                boolean isArmored = false;
-                if (armorContainer != null) {
-                    for (short i = 0; i < armorContainer.getCapacity(); i++) {
-                        ItemStack armorPiece = armorContainer.getItemStack(i);
-                        if (armorPiece != null && !armorPiece.isEmpty()) { isArmored = true; break; }
+            // Trzymany przedmiot
+            ItemStack handItem = inv.getItemInHand();
+            context.append("Gracz trzyma w dłoni: ").append(handItem != null && !handItem.isEmpty() ? handItem.getItemId() : "Nic").append("\n");
+
+            // Szczegółowy pancerz
+            context.append("Ubiór Gracza: ");
+            ItemContainer armor = inv.getArmor();
+            boolean hasAnyArmor = false;
+            if (armor != null) {
+                for (short i = 0; i < armor.getCapacity(); i++) {
+                    ItemStack piece = armor.getItemStack(i);
+                    if (piece != null && !piece.isEmpty()) {
+                        context.append("[").append(piece.getItemId()).append("] ");
+                        hasAnyArmor = true;
                     }
                 }
-                context.append(isArmored ? "Gracz jest opancerzony.\n" : "Gracz nie ma pancerza (bezbronny!).\n");
+            }
+            if (!hasAnyArmor) context.append("Brak (Bezbronny/Nagi)");
+            context.append("\n");
+
+            // Agregacja całego plecaka (Storage + Hotbar)
+            context.append("Zawartość plecaka: ");
+            ItemContainer mainInv = inv.getCombinedHotbarFirst(); // Używamy natywnej metody Hytale!
+            if (mainInv != null) {
+                Map<String, Integer> aggregatedItems = new HashMap<>();
+                for (short i = 0; i < mainInv.getCapacity(); i++) {
+                    ItemStack item = mainInv.getItemStack(i);
+                    if (item != null && !item.isEmpty() && item.getItemId() != null) {
+                        int amount = 1;
+                        try { amount = item.getQuantity(); } catch (Exception ignored) {} // Zmieniono na getQuantity!
+                        aggregatedItems.put(item.getItemId(), aggregatedItems.getOrDefault(item.getItemId(), 0) + amount);
+                    }
+                }
+
+                if (aggregatedItems.isEmpty()) {
+                    context.append("Pusty\n");
+                } else {
+                    StringBuilder invString = new StringBuilder();
+                    for (Map.Entry<String, Integer> entry : aggregatedItems.entrySet()) {
+                        invString.append(entry.getValue()).append("x ").append(entry.getKey()).append(", ");
+                    }
+                    context.append(invString.substring(0, invString.length() - 2)).append("\n");
+                }
             }
         }
 
-        // 3. Czas
+        // ==========================================
+        // 3. CZAS I ŚRODOWISKO
+        // ==========================================
         try {
             WorldTimeResource timeResource = store.getResource(TimeModule.get().getWorldTimeResourceType());
             if (timeResource != null) {
                 LocalDateTime dateTime = timeResource.getGameDateTime();
-                String timeOfDay = "Noc";
-                if (dateTime.getHour() >= 6 && dateTime.getHour() < 10) timeOfDay = "Poranek";
-                else if (dateTime.getHour() >= 10 && dateTime.getHour() < 17) timeOfDay = "Środek Dnia";
-                else if (dateTime.getHour() >= 17 && dateTime.getHour() < 20) timeOfDay = "Wieczór / Zachód Słońca";
-                context.append("Czas na świecie: ").append(String.format("%02d:%02d", dateTime.getHour(), dateTime.getMinute())).append(" (").append(timeOfDay).append(")\n");
+                context.append("Czas w grze: ").append(String.format("%02d:%02d", dateTime.getHour(), dateTime.getMinute())).append("\n");
             }
         } catch (Exception ignored) {}
 
-        // 4 & 5. ZAAWANSOWANY RADAR
-        TransformComponent radarOriginTransform = playerTransform;
+        // ==========================================
+        // 4. MICRO-RADAR BLOKÓW INTERAKTYWNYCH (Promień: 3 bloki)
+        // ==========================================
+        if (playerTransform != null) {
+            int px = (int) playerTransform.getPosition().getX();
+            int py = (int) playerTransform.getPosition().getY();
+            int pz = (int) playerTransform.getPosition().getZ();
+
+            Map<Integer, Integer> interestingBlocks = new HashMap<>();
+
+            for (int x = px - 3; x <= px + 3; x++) {
+                for (int z = pz - 3; z <= pz + 3; z++) {
+                    long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(x, z);
+                    com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk chunk = world.getChunkIfInMemory(chunkIndex);
+
+                    if (chunk != null) {
+                        int localX = x & 31;
+                        int localZ = z & 31;
+                        for (int y = py - 3; y <= py + 3; y++) {
+                            if (y < 0 || y > 255) continue;
+
+                            int blockId = chunk.getBlock(localX, y, localZ);
+                            if (blockId > 10) {
+                                interestingBlocks.put(blockId, interestingBlocks.getOrDefault(blockId, 0) + 1);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!interestingBlocks.isEmpty()) {
+                context.append("Ciekawe bloki wokół ciebie (ID): ");
+                for (Map.Entry<Integer, Integer> entry : interestingBlocks.entrySet()) {
+                    context.append(entry.getValue()).append("x [ID:").append(entry.getKey()).append("] ");
+                }
+                context.append("\n");
+            }
+        }
+
+        // ==========================================
+        // 5. RADAR ISTOT (Z wykorzystaniem pozycji Kompana)
+        // ==========================================
+        TransformComponent radarOrigin = playerTransform;
         double radarRadiusSq = 225.0;
         String originName = "gracza";
 
         if (companionRef != null && companionRef.isValid()) {
             TransformComponent compTransform = store.getComponent(companionRef, TransformComponent.getComponentType());
             if (compTransform != null) {
-                radarOriginTransform = compTransform;
-                radarRadiusSq = 900.0; // 30^2
-                originName = "Ciebie (kompana)";
+                radarOrigin = compTransform;
+                radarRadiusSq = 900.0;
+                originName = "ciebie (kompana)";
             }
         }
 
-        context.append("Istoty w pobliżu ").append(originName).append(" (Zasięg radaru: ").append((int)Math.sqrt(radarRadiusSq)).append(" bloków):\n");
-        java.util.Map<String, Integer> nearbyEntities = new java.util.HashMap<>();
+        context.append("Istoty w pobliżu ").append(originName).append(" (Promień: ").append((int)Math.sqrt(radarRadiusSq)).append(" blk):\n");
+        Map<String, Integer> nearbyEntities = new HashMap<>();
 
-        if (radarOriginTransform != null) {
-            final TransformComponent finalOrigin = radarOriginTransform;
+        if (radarOrigin != null) {
+            final TransformComponent finalOrigin = radarOrigin;
             final double finalRadiusSq = radarRadiusSq;
 
             store.forEachChunk(NPCEntity.getComponentType(), (chunk, buffer) -> {
@@ -131,9 +207,9 @@ public class WorldContextBuilder {
                         double dx = npcTransform.getPosition().getX() - finalOrigin.getPosition().getX();
                         double dy = npcTransform.getPosition().getY() - finalOrigin.getPosition().getY();
                         double dz = npcTransform.getPosition().getZ() - finalOrigin.getPosition().getZ();
-                        double distanceSq = (dx * dx) + (dy * dy) + (dz * dz);
+                        double distSq = (dx * dx) + (dy * dy) + (dz * dz);
 
-                        if (distanceSq <= finalRadiusSq) {
+                        if (distSq <= finalRadiusSq) {
                             String entityName = "Nieznana_istota";
                             try {
                                 ModelComponent modelComp = store.getComponent(ref, ModelComponent.getComponentType());
@@ -149,9 +225,10 @@ public class WorldContextBuilder {
             });
         }
 
-        if (nearbyEntities.isEmpty()) context.append("- Czysto. W pobliżu nie ma żadnych istot.\n");
-        else {
-            for (java.util.Map.Entry<String, Integer> entry : nearbyEntities.entrySet()) {
+        if (nearbyEntities.isEmpty()) {
+            context.append("- Czysto. Brak istot.\n");
+        } else {
+            for (Map.Entry<String, Integer> entry : nearbyEntities.entrySet()) {
                 context.append("- ").append(entry.getValue()).append("x ").append(entry.getKey()).append("\n");
             }
         }
