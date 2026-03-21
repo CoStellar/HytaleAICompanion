@@ -6,8 +6,7 @@
 *.iws
 out/
 bin/
-app/bin/
-
+app/bin
 # ==========================================
 # Cache i buildy Gradle (Zajmują mnóstwo miejsca)
 # ==========================================
@@ -25,7 +24,7 @@ server.properties
 eula.txt
 world/
 logs/
-crash-reports/
+crash-reports/git
 
 # ==========================================
 # DANE WRAŻLIWE (Bazy danych AI, klucze API)
