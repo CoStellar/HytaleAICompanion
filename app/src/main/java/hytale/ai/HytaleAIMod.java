@@ -9,6 +9,7 @@ import hytale.ai.config.PlayerSettingsManager;
 import hytale.ai.npc.NpcBrain;
 
 import com.hypixel.hytale.server.core.HytaleServer;
+import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
@@ -70,6 +71,57 @@ public class HytaleAIMod extends JavaPlugin {
         PlayerProfileManager.init();
         PlayerSettingsManager.init();
 
+        // ---------------------------------------------------------
+        // REJESTRACJA ZDARZEŃ GRACZA (DOŁĄCZENIE / WYJŚCIE)
+        // ---------------------------------------------------------
+
+        // 1. Ładowanie danych z dysku do RAM po wejściu na serwer
+        HytaleServer.get().getEventBus().registerGlobal(PlayerConnectEvent.class, event -> {
+            UUID playerUuid = event.getPlayerRef().getUuid();
+
+            // Wczytanie profilu kompana do pamięci RAM
+            CompanionProfile profile = PlayerProfileManager.loadProfile(playerUuid);
+            if (profile != null) {
+                playerProfiles.put(playerUuid, profile);
+            }
+
+            // Wczytanie ustawień (np. klucza API) do pamięci RAM (Zmień na odpowiednią metodę jeśli masz inną w menedżerze)
+            PlayerSettings settings = PlayerSettingsManager.loadSettings(playerUuid);
+            if (settings != null) {
+                 playerSettingsMap.put(playerUuid, settings);
+            }
+
+            LOGGER.info("[HytaleAI] Załadowano dane z dysku dla gracza: " + playerUuid);
+        });
+
+        // 2. Czyszczenie pamięci i odspawnowanie po wyjściu z serwera
+        HytaleServer.get().getEventBus().registerGlobal(PlayerDisconnectEvent.class, event -> {
+            UUID playerUuid = event.getPlayerRef().getUuid();
+            CompanionProfile profile = playerProfiles.get(playerUuid);
+
+            if (profile == null) profile = PlayerProfileManager.loadProfile(playerUuid);
+
+            if (profile != null) {
+                profile.setSummoned(false);
+                PlayerProfileManager.saveProfile(playerUuid, profile);
+            }
+
+            if (event.getPlayerRef().getReference() != null && event.getPlayerRef().getReference().getStore() != null) {
+                despawnCompanion(playerUuid, event.getPlayerRef().getReference().getStore());
+            }
+
+            // Usunięcie z cache, zapobiega wyciekom pamięci
+            activeCompanions.remove(playerUuid);
+            playerProfiles.remove(playerUuid);
+            playerSettingsMap.remove(playerUuid);
+
+            LOGGER.info("[HytaleAI] Wyczyszczono profil z pamięci RAM dla: " + playerUuid);
+        });
+
+        // ---------------------------------------------------------
+        // SYSTEMY ECS (ŚMIERĆ KOMPANA ITD.)
+        // ---------------------------------------------------------
+
         getEntityStoreRegistry().registerSystem(new RefSystem<EntityStore>() {
             @Override
             public Query<EntityStore> getQuery() {
@@ -106,25 +158,6 @@ public class HytaleAIMod extends JavaPlugin {
             }
             @Override
             public void onEntityRemove(@Nonnull Ref<EntityStore> ref, @Nonnull RemoveReason reason, @Nonnull Store<EntityStore> store, @Nonnull CommandBuffer<EntityStore> commandBuffer) {}
-        });
-
-        HytaleServer.get().getEventBus().registerGlobal(PlayerDisconnectEvent.class, event -> {
-            UUID playerUuid = event.getPlayerRef().getUuid();
-            CompanionProfile profile = playerProfiles.get(playerUuid);
-            if (profile == null) profile = PlayerProfileManager.loadProfile(playerUuid);
-
-            if (profile != null) {
-                profile.setSummoned(false);
-                PlayerProfileManager.saveProfile(playerUuid, profile);
-            }
-
-            if (event.getPlayerRef().getReference() != null && event.getPlayerRef().getReference().getStore() != null) {
-                despawnCompanion(playerUuid, event.getPlayerRef().getReference().getStore());
-            }
-
-            activeCompanions.remove(playerUuid);
-            playerProfiles.remove(playerUuid);
-            playerSettingsMap.remove(playerUuid);
         });
 
         new CommandManager(this);
@@ -169,9 +202,20 @@ public class HytaleAIMod extends JavaPlugin {
         });
 
         contextFuture.thenCompose(worldContext -> brain.chatWithPlayer(sender.getUsername(), prompt, worldContext, settings.isDebugMode()))
-                .thenAccept(response -> {
-                    String cleanResponse = removeDiacritics(response);
+                .thenAccept(aiResponse -> {
+                    // Wyświetlamy graczowi tylko pole "dialogue"
+                    String cleanResponse = removeDiacritics(aiResponse.dialogue());
                     sender.sendMessage(Message.raw("[" + profile.getNpcName() + "] " + cleanResponse));
+
+                    // Wypisujemy monolog do konsoli serwera (dla Ciebie, do debugowania)
+                    if (settings.isDebugMode()) {
+                        LOGGER.info("[Wewnętrzna Myśl Kompana]: " + aiResponse.thought_process());
+                    }
+
+                    // TUTAJ w przyszłości podepniemy API Hytale do wykonania akcji fizycznej!
+                    if (!"NONE".equalsIgnoreCase(aiResponse.action())) {
+                        LOGGER.info("[Akcja Kompana]: Wykonał " + aiResponse.action() + " na celu: " + aiResponse.action_target());
+                    }
                 });
     }
 
