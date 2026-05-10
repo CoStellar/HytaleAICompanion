@@ -1,0 +1,38 @@
+{
+  "Type": "Generic",
+  "Parameters": {
+    "Appearance": { "Value": "hytale:kweebec_leaf_ranger" },
+    "MaxHealth": { "Value": 100 },
+    "NameTranslationKey": { "Value": "AI Companion" }
+  },
+  "StartState": "Idle",
+  "MotionControllerList": [{ "Type": "Walk", "MaxWalkSpeed": 4 }],
+  "Instructions": [
+    {
+      "Sensor": { "Type": "State", "State": "Idle" },
+      "BodyMotion": { "Type": "Nothing" },
+      "Instructions": [{ "Sensor": { "Type": "State", "State": ".Default" } }]
+    },
+    {
+      "Sensor": { "Type": "State", "State": "Follow" },
+      "Instructions": [
+        {
+          "Reference": "Component_Instruction_Intelligent_Chase",
+          "Modify": {
+            "StopDistance": 3.0,
+            "RelativeSpeed": 0.8
+          }
+        }
+      ]
+    },
+    {
+      "Sensor": { "Type": "State", "State": "Attack" },
+      "Instructions": [
+        {
+          "Type": "Attack",
+          "Attack": "hytale_ai:ai_companion_attack"
+        }
+      ]
+    }
+  ]
+}
