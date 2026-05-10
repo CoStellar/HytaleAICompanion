@@ -70,9 +70,16 @@ public class NpcBrain {
         fullPrompt.append("ZASADA 1: Odpowiadasz WYŁĄCZNIE w formacie JSON zgodnym z poniższym schematem. Żadnych znaczników markdown.\n");
         fullPrompt.append("ZASADA 2: Dostosuj długość dialogu do sytuacji. W walce mów krótko (1-3 słowa), w bezpiecznym miejscu możesz mówić więcej.\n");
         fullPrompt.append("ZASADA 3: Zawsze bądź pomocny, nawet jeśli twoje dziwactwa sugerują inaczej.\n");
-        fullPrompt.append("ZASADA 4: Opcje dla 'action' to ściśle: HEAL, ATTACK, FOLLOW, FLEE, NONE.\n");
-        fullPrompt.append("ZASADA 5: Twoje przemyślenia muszą być podzielone na obserwację ('observation') i wnioski ('reasoning').\n\n");
 
+        // ROZWINIĘTA ZASADA 4 - Instrukcja obsługi ciała dla LLM
+        fullPrompt.append("ZASADA 4: Wybierz JEDNĄ akcję fizyczną ('action') z poniższej listy, która najlepiej pasuje do polecenia gracza lub sytuacji:\n");
+        fullPrompt.append("  - FOLLOW : Podążaj za graczem (domyślny stan podczas podróży).\n");
+        fullPrompt.append("  - STAY   : Zatrzymaj się, stój w miejscu, przestań podążać, czekaj na rozkazy.\n");
+        fullPrompt.append("  - ATTACK : Zaatakuj wroga (musisz podać jego nazwę w 'action_target').\n");
+        fullPrompt.append("  - FLEE   : Uciekaj w panice (tylko w obliczu śmiertelnego zagrożenia).\n");
+        fullPrompt.append("  - HEAL   : Ulecz gracza lub siebie, jeśli ktoś ma krytycznie mało HP.\n");
+
+        fullPrompt.append("ZASADA 5: Twoje przemyślenia muszą być podzielone na obserwację ('observation') i wnioski ('reasoning').\n\n");
         // Definicja oczekiwanego formatu
         fullPrompt.append("--- WYMAGANA STRUKTURA JSON ---\n");
         fullPrompt.append("{\n");

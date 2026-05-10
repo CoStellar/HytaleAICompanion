@@ -1,38 +1,105 @@
 {
   "Type": "Generic",
   "Parameters": {
-    "Appearance": { "Value": "hytale:kweebec_leaf_ranger" },
-    "MaxHealth": { "Value": 100 },
-    "NameTranslationKey": { "Value": "AI Companion" }
+    "MaxHealth": {
+      "Value": 100,
+      "Description": "Maksymalne HP kompana"
+    }
   },
   "StartState": "Idle",
-  "MotionControllerList": [{ "Type": "Walk", "MaxWalkSpeed": 4 }],
+  "Appearance": "Kweebec_Rootling",
+  "MaxHealth": {
+    "Compute": "MaxHealth"
+  },
+  "MotionControllerList": [
+    {
+      "Type": "Walk",
+      "MaxWalkSpeed": 5,
+      "RunThreshold": 0.6,
+      "Gravity": 10,
+      "Acceleration": 12
+    }
+  ],
   "Instructions": [
     {
-      "Sensor": { "Type": "State", "State": "Idle" },
-      "BodyMotion": { "Type": "Nothing" },
-      "Instructions": [{ "Sensor": { "Type": "State", "State": ".Default" } }]
-    },
-    {
-      "Sensor": { "Type": "State", "State": "Follow" },
       "Instructions": [
         {
-          "Reference": "Component_Instruction_Intelligent_Chase",
-          "Modify": {
-            "StopDistance": 3.0,
-            "RelativeSpeed": 0.8
-          }
-        }
-      ]
-    },
-    {
-      "Sensor": { "Type": "State", "State": "Attack" },
-      "Instructions": [
+          "$Comment": "1. IDLE - Stoi w miejscu (NONE)",
+          "Sensor": { "Type": "State", "State": "Idle" },
+          "BodyMotion": { "Type": "Nothing" }
+        },
         {
-          "Type": "Attack",
-          "Attack": "hytale_ai:ai_companion_attack"
+          "$Comment": "2. FOLLOW - Podaza za graczem",
+          "Sensor": { "Type": "State", "State": "Follow" },
+          "Instructions": [
+            {
+              "Sensor": { "Type": "Player", "Range": 100, "LockOnTarget": true },
+              "BodyMotion": { "Type": "Seek", "StopDistance": 3.0 }
+            }
+          ]
+        },
+        {
+          "$Comment": "3. ATTACK - Na razie agresywnie zbliza sie do gracza (testowo)",
+          "Sensor": { "Type": "State", "State": "Attack" },
+          "Instructions": [
+            {
+              "Sensor": { "Type": "Player", "Range": 100, "LockOnTarget": true },
+              "BodyMotion": { "Type": "Seek", "StopDistance": 1.5, "RelativeSpeed": 1.5 }
+            }
+          ]
+        },
+        {
+          "$Comment": "4. FLEE - Ucieka od gracza",
+          "Sensor": { "Type": "State", "State": "Flee" },
+          "Instructions": [
+            {
+              "Sensor": { "Type": "Player", "Range": 20 },
+              "BodyMotion": { "Type": "Flee" }
+            }
+          ]
+        },
+        {
+          "$Comment": "5. HEAL - Zatrzymuje sie i np. rzuca zaklecie (tu: stoi w miejscu)",
+          "Sensor": { "Type": "State", "State": "Heal" },
+          "BodyMotion": { "Type": "Nothing" }
         }
       ]
     }
-  ]
+  ],
+  "InteractionInstruction": {
+    "$Comment": "Cykl interakcji do testowania wszystkich stanow PPM w grze",
+    "Instructions": [
+      {
+        "Continue": true,
+        "Sensor": { "Type": "Any" },
+        "Actions": [ { "Type": "SetInteractable", "Interactable": true } ]
+      },
+      {
+        "Sensor": { "Type": "HasInteracted" },
+        "Instructions": [
+          {
+            "Sensor": { "Type": "State", "State": "Idle" },
+            "Actions": [ { "Type": "State", "State": "Follow" } ]
+          },
+          {
+            "Sensor": { "Type": "State", "State": "Follow" },
+            "Actions": [ { "Type": "State", "State": "Attack" } ]
+          },
+          {
+            "Sensor": { "Type": "State", "State": "Attack" },
+            "Actions": [ { "Type": "State", "State": "Flee" } ]
+          },
+          {
+            "Sensor": { "Type": "State", "State": "Flee" },
+            "Actions": [ { "Type": "State", "State": "Heal" } ]
+          },
+          {
+            "Sensor": { "Type": "State", "State": "Heal" },
+            "Actions": [ { "Type": "State", "State": "Idle" } ]
+          }
+        ]
+      }
+    ]
+  },
+  "NameTranslationKey": "server.npcRoles.ai_companion.name"
 }

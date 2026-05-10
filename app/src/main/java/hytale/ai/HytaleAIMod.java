@@ -6,7 +6,7 @@ import hytale.ai.config.CompanionProfile;
 import hytale.ai.config.PlayerProfileManager;
 import hytale.ai.config.PlayerSettings;
 import hytale.ai.config.PlayerSettingsManager;
-import hytale.ai.npc.NpcBrain;
+import hytale.ai.npc.*;
 
 import com.hypixel.hytale.server.core.HytaleServer;
 import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
@@ -51,6 +51,7 @@ public class HytaleAIMod extends JavaPlugin {
     private final Map<UUID, CompanionProfile> playerProfiles = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerSettings> playerSettingsMap = new ConcurrentHashMap<>();
     private final Map<UUID, Ref<EntityStore>> activeCompanionEntities = new ConcurrentHashMap<>();
+    private final Map<UUID, CompanionController> activeControllers = new ConcurrentHashMap<>();
     private final Map<UUID, Runnable> pendingConfirmations = new ConcurrentHashMap<>();
 
     public HytaleAIMod(JavaPluginInit init) {
@@ -85,10 +86,10 @@ public class HytaleAIMod extends JavaPlugin {
                 playerProfiles.put(playerUuid, profile);
             }
 
-            // Wczytanie ustawień (np. klucza API) do pamięci RAM (Zmień na odpowiednią metodę jeśli masz inną w menedżerze)
+            // Wczytanie ustawień (np. klucza API) do pamięci RAM
             PlayerSettings settings = PlayerSettingsManager.loadSettings(playerUuid);
             if (settings != null) {
-                 playerSettingsMap.put(playerUuid, settings);
+                playerSettingsMap.put(playerUuid, settings);
             }
 
             LOGGER.info("[HytaleAI] Załadowano dane z dysku dla gracza: " + playerUuid);
@@ -114,6 +115,7 @@ public class HytaleAIMod extends JavaPlugin {
             activeCompanions.remove(playerUuid);
             playerProfiles.remove(playerUuid);
             playerSettingsMap.remove(playerUuid);
+            activeControllers.remove(playerUuid);
 
             LOGGER.info("[HytaleAI] Wyczyszczono profil z pamięci RAM dla: " + playerUuid);
         });
@@ -153,6 +155,7 @@ public class HytaleAIMod extends JavaPlugin {
                             }
                         }
                         activeCompanionEntities.remove(deadPlayerUuid);
+                        activeControllers.remove(deadPlayerUuid);
                     }
                 }
             }
@@ -166,6 +169,7 @@ public class HytaleAIMod extends JavaPlugin {
     public void processNaturalConversation(PlayerRef sender, UUID playerUuid, String prompt) {
         PlayerSettings settings = playerSettingsMap.get(playerUuid);
         CompanionProfile profile = playerProfiles.get(playerUuid);
+        CompanionController controller = activeControllers.get(playerUuid);
 
         if (settings == null || !settings.hasKey()) {
             sender.sendMessage(Message.raw("[System] Brak klucza API (!ai -setup <klucz>)."));
@@ -203,19 +207,26 @@ public class HytaleAIMod extends JavaPlugin {
 
         contextFuture.thenCompose(worldContext -> brain.chatWithPlayer(sender.getUsername(), prompt, worldContext, settings.isDebugMode()))
                 .thenAccept(aiResponse -> {
-                    // Wyświetlamy graczowi tylko pole "dialogue"
+                    // Wyświetlamy graczowi dialog (to jest bezpieczne z wątku pobocznego)
                     String cleanResponse = removeDiacritics(aiResponse.dialogue());
                     sender.sendMessage(Message.raw("[" + profile.getNpcName() + "] " + cleanResponse));
 
-                    // Wypisujemy monolog do konsoli serwera (dla Ciebie, do debugowania)
+                    // Wypisujemy monolog do konsoli serwera
                     if (settings.isDebugMode()) {
                         LOGGER.info("[Wewnętrzna Myśl Kompana]: " + aiResponse.thought_process());
                     }
 
-                    // TUTAJ w przyszłości podepniemy API Hytale do wykonania akcji fizycznej!
-                    if (!"NONE".equalsIgnoreCase(aiResponse.action())) {
-                        LOGGER.info("[Akcja Kompana]: Wykonał " + aiResponse.action() + " na celu: " + aiResponse.action_target());
-                    }
+                    // KLUCZOWA ZMIANA: Wrzucamy wykonanie akcji fizycznej na GŁÓWNY WĄTEK silnika Hytale!
+                    world.execute(() -> {
+                        if (controller != null) {
+                            controller.handleAiDecision(aiResponse);
+                        }
+                    });
+                }).exceptionally(ex -> {
+                    // Dodajemy wyłapywanie błędów, żeby ciche błędy z wątków już nas nie dręczyły
+                    LOGGER.severe("[AI NPC] Blad podczas przetwarzania odpowiedzi LLM: " + ex.getMessage());
+                    ex.printStackTrace();
+                    return null;
                 });
     }
 
@@ -232,20 +243,36 @@ public class HytaleAIMod extends JavaPlugin {
             Vector3d spawnPos = new Vector3d(playerPos.getX() + 2.0, playerPos.getY(), playerPos.getZ() + 2.0);
 
             try {
-                var result = NPCPlugin.get().spawnNPC(store, "test_pet", profile.getNpcName(), spawnPos, new Vector3f(0, 0, 0));
-                if (result != null) {
+                // Używamy samej nazwy pliku JSON jako ID (bez prefixu hytale_ai:)
+                String npcId = "ai_companion";
+                LOGGER.info("[AI NPC] Próba zespawnowania NPC o ID: " + npcId);
+
+                var result = NPCPlugin.get().spawnNPC(store, npcId, profile.getNpcName(), spawnPos, new Vector3f(0, 0, 0));
+
+                if (result != null && result.first() != null) {
                     Ref<EntityStore> npcRef = result.first();
                     activeCompanionEntities.put(playerUuid, npcRef);
+
+                    // Przekazujemy: 1. Ref bota, 2. Ref gracza (pobrany z argumentu metody), 3. Store
+                    CompanionController controller = new CompanionController(npcRef, playerRef, store);
+                    activeControllers.put(playerUuid, controller);
+
                     NPCEntity.setAppearance(npcRef, profile.getInGameModel(), store);
+                    LOGGER.info("[AI NPC] SUKCES! Zespawnowano kompana: " + profile.getNpcName());
+                } else {
+                    // Jeśli wejdzie tutaj, to znaczy że ID jest ciągle złe
+                    LOGGER.severe("[AI NPC] BŁĄD: spawnNPC zwróciło NULL! Silnik nie rozpoznaje ID: " + npcId);
                 }
             } catch (Exception e) {
-                LOGGER.severe("[AI NPC] Blad spawnowania!");
+                LOGGER.severe("[AI NPC] Blad spawnowania: " + e.getMessage());
+                e.printStackTrace();
             }
         });
     }
 
     public void despawnCompanion(UUID playerUuid, Store<EntityStore> store) {
         Ref<EntityStore> entityRef = activeCompanionEntities.remove(playerUuid);
+        activeControllers.remove(playerUuid);
         if (entityRef != null && entityRef.isValid()) {
             World world = store.getExternalData().getWorld();
             world.execute(() -> {
