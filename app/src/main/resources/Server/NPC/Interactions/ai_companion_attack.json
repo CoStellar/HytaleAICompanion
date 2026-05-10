@@ -1,0 +1,16 @@
+{
+  "Interactions": [
+    {
+      "Type": "Simple",
+      "Effects": {
+        "ItemAnimationId": "Attack"
+      },
+      "RunTime": 0.5,
+      "DamageCalculator": {
+        "Type": "Absolute",
+        "BaseDamage": { "Physical": 10 }
+      }
+    }
+  ],
+  "Tags": { "Attack": ["Melee"] }
+}
