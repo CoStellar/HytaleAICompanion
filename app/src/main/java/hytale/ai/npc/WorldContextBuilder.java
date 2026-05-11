@@ -78,7 +78,10 @@ public class WorldContextBuilder {
                 if (armorContainer != null) {
                     for (short i = 0; i < armorContainer.getCapacity(); i++) {
                         ItemStack armorPiece = armorContainer.getItemStack(i);
-                        if (armorPiece != null && !armorPiece.isEmpty()) { isArmored = true; break; }
+                        if (armorPiece != null && !armorPiece.isEmpty()) {
+                            isArmored = true;
+                            break;
+                        }
                     }
                 }
                 context.append(isArmored ? "Gracz jest opancerzony.\n" : "Gracz nie ma pancerza (bezbronny!).\n");
@@ -96,7 +99,8 @@ public class WorldContextBuilder {
                 else if (dateTime.getHour() >= 17 && dateTime.getHour() < 20) timeOfDay = "Wieczór / Zachód Słońca";
                 context.append("Czas na świecie: ").append(String.format("%02d:%02d", dateTime.getHour(), dateTime.getMinute())).append(" (").append(timeOfDay).append(")\n");
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         // 4 & 5. ZAAWANSOWANY RADAR
         TransformComponent radarOriginTransform = playerTransform;
@@ -112,7 +116,7 @@ public class WorldContextBuilder {
             }
         }
 
-        context.append("Istoty w pobliżu ").append(originName).append(" (Zasięg radaru: ").append((int)Math.sqrt(radarRadiusSq)).append(" bloków):\n");
+        context.append("Istoty w pobliżu ").append(originName).append(" (Zasięg radaru: ").append((int) Math.sqrt(radarRadiusSq)).append(" bloków):\n");
         java.util.Map<String, Integer> nearbyEntities = new java.util.HashMap<>();
 
         if (radarOriginTransform != null) {
@@ -141,16 +145,31 @@ public class WorldContextBuilder {
                                     String assetId = modelComp.getModel().getModelAssetId();
                                     if (assetId != null && !assetId.isEmpty()) entityName = assetId;
                                 }
-                            } catch (Exception ignored) {}
+                            } catch (Exception ignored) {
+                            }
                             nearbyEntities.put(entityName, nearbyEntities.getOrDefault(entityName, 0) + 1);
                         }
                     }
                 }
             });
         }
+        String engineState = "Nieznany";
+        if (companionRef != null && companionRef.isValid()) {
+            NPCEntity npcComponent = store.getComponent(companionRef, NPCEntity.getComponentType());
+            if (npcComponent != null && npcComponent.getRole() != null && npcComponent.getRole().getStateSupport() != null) {
+                try {
+                    engineState = npcComponent.getRole().getStateSupport().getStateName();
+                } catch (Exception e) {
+                    engineState = "Blad_Odczytu";
+                }
+            }
+        }
 
-        if (nearbyEntities.isEmpty()) context.append("- Czysto. W pobliżu nie ma żadnych istot.\n");
-        else {
+        context.append("Twoj obecny fizyczny stan w silniku gry to: ").append(engineState).append("\n");
+
+        if (nearbyEntities.isEmpty()) {
+            context.append("- Czysto. W pobliżu nie ma żadnych istot.\n");
+        } else {
             for (java.util.Map.Entry<String, Integer> entry : nearbyEntities.entrySet()) {
                 context.append("- ").append(entry.getValue()).append("x ").append(entry.getKey()).append("\n");
             }

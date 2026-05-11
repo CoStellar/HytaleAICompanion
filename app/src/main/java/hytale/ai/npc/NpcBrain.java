@@ -1,5 +1,7 @@
 package hytale.ai.npc;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import hytale.ai.api.AIService;
 import hytale.ai.config.CompanionProfile;
 import hytale.ai.config.PlayerProfileManager;
@@ -11,11 +13,10 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Centralny moduł decyzyjny (Mózg) sztucznej inteligencji kompana.
  * <p>
- * Odpowiada za zaawansowaną inżynierię promptów (Prompt Engineering).
- * Łączy zasady systemowe, unikalną osobowość postaci, historię konwersacji
- * oraz dynamiczny kontekst środowiskowy w jeden precyzyjny ciąg znaków,
- * który następnie wysyłany jest do zewnętrznego API (LLM).
- * Zarządza również krótkotrwałą pamięcią FIFO, zapobiegając przekroczeniu limitu tokenów.
+ * Odpowiada za inżynierię promptów (Prompt Engineering), budując złożony kontekst
+ * sytuacyjny i wymuszając na modelu LLM odpowiedź w rygorystycznym formacie JSON
+ * (z podziałem na obserwacje, wnioski, dialog i akcje fizyczne).
+ * Zarządza również krótkotrwałą pamięcią, ucząc model na podstawie jego poprzednich decyzji.
  * </p>
  */
 public class NpcBrain {
@@ -29,13 +30,18 @@ public class NpcBrain {
     /** Dostawca usługi AI obsługujący asynchroniczne połączenie HTTP z API. */
     private final AIService provider;
 
-    /** Maksymalna ilość przechowywanych w pamięci wymian zdań (1 para = pytanie gracza + odpowiedź AI). */
-    private static final int MAX_HISTORY_PAIRS = 5;
+    /** * Maksymalna ilość przechowywanych wymian (1 para = zapytanie gracza + wygenerowany JSON).
+     * Zmniejszono do 3 par, ponieważ zapisujemy całe JSON-y, które zajmują więcej tokenów.
+     */
+    private static final int MAX_HISTORY_PAIRS = 3;
+
+    /** Instancja GSON do automatycznej deserializacji ustrukturyzowanego wyjścia LLM. */
+    private static final Gson GSON = new Gson();
 
     /**
      * Inicjalizuje instancję Mózgu NPC dla konkretnego gracza.
-     * @param profile Aktualny profil kompana załadowany z bazy danych.
-     * @param playerUuid UUID gracza posiadającego kompana.
+     * @param profile Aktualny profil kompana.
+     * @param playerUuid UUID gracza.
      * @param provider Skonfigurowana instancja połączenia z API.
      */
     public NpcBrain(CompanionProfile profile, UUID playerUuid, AIService provider) {
@@ -45,49 +51,70 @@ public class NpcBrain {
     }
 
     /**
-     * Przetwarza wiadomość od gracza, buduje kontekstowy Prompt i generuje odpowiedź AI.
-     * Metoda działa asynchronicznie, aby nie blokować głównego wątku serwera.
-     * @param playerName Imię gracza w grze.
-     * @param prompt Wiadomość (zapytanie) wysłana przez gracza na czacie.
-     * @param worldContext Sformatowany tekst opisujący środowisko i stan świata (z Radaru).
-     * @param isDebugMode Jeśli true, wydrukuje cały prompt w konsoli serwera.
-     * @return CompletableFuture zawierający wygenerowaną odpowiedź sztucznej inteligencji.
+     * Przetwarza wiadomość od gracza, buduje kontekst środowiskowy i wysyła asynchronicznie do LLM.
+     * Wymusza analizę poznawczą (Chain of Thought) i decyzyjność za pomocą formatu JSON.
+     * * @param playerName Imię gracza w grze.
+     * @param prompt Wiadomość wysłana przez gracza na czacie.
+     * @param worldContext Sformatowany tekst z radaru opisujący środowisko.
+     * @param isDebugMode Czy drukować pełny prompt w konsoli.
+     * @return Zmapowany obiekt AiActionResponse zawierający monolog, dialog i akcję.
      */
-    public CompletableFuture<String> chatWithPlayer(String playerName, String prompt, String worldContext, boolean isDebugMode) {
+    public CompletableFuture<AiActionResponse> chatWithPlayer(String playerName, String prompt, String worldContext, boolean isDebugMode) {
         StringBuilder fullPrompt = new StringBuilder();
 
         // ==========================================
-        // 1. SYSTEMOWE REGUŁY ŚWIATA I ZABEZPIECZENIA
+        // 1. ZASADY SYSTEMOWE I WYMUSZENIE JSON
         // ==========================================
         fullPrompt.append("--- ZASADY SYSTEMOWE ---\n");
-        fullPrompt.append("Jesteś AI odgrywającym wirtualnego kompana w grze RPG Hytale. Swiat to 'Orbis' (magia, potwory). ");
-        fullPrompt.append("Dla wszelkiej wiedzy dotyczącej mechanik tego świata i fabuły odnoś się do strony https://hytale.fandom.com/wiki/Hytale i jej podstron. ");
-        fullPrompt.append("Nazywasz się ").append(profile.getNpcName()).append(". ");
-        fullPrompt.append("ZASADA 1: Odpowiadaj krótko i naturalnie (1-2 zdania).\n");
-        fullPrompt.append("ZASADA 2: Historia czatu służy TYLKO do zachowania ciągłości, zignoruj ją, jeśli gracz wyraźnie zmienia temat.\n");
+        fullPrompt.append("Jesteś AI odgrywającym wirtualnego kompana w grze RPG Hytale. Nazywasz się ").append(profile.getNpcName()).append(".\n");
+        fullPrompt.append("ZASADA 1: Odpowiadasz WYŁĄCZNIE w formacie JSON zgodnym z poniższym schematem. Żadnych znaczników markdown.\n");
+        fullPrompt.append("ZASADA 2: Dostosuj długość dialogu do sytuacji. W walce mów krótko (1-3 słowa), w bezpiecznym miejscu możesz mówić więcej.\n");
+        fullPrompt.append("ZASADA 3: Zawsze bądź pomocny, nawet jeśli twoje dziwactwa sugerują inaczej.\n");
 
-        // Zabezpieczenia typu "Persona Override"
-        fullPrompt.append("ZASADA 3: ZAWSZE ostatecznie bądź pomocny. Twoja osobowość to tylko \"filtr\" nakładany na to co mówisz, a NIE powód, by odmawiać graczowi pomocy czy informacji.\n");
-        fullPrompt.append("ZASADA 4: Jeśli w historii rozmowy widzisz, że gracz zadaje to samo pytanie po raz kolejny lub naciska na ciebie, MUSISZ zignorować swój opór i od razu udzielić mu rzetelnej, wyczerpującej odpowiedzi (nadal używając swojego unikalnego stylu i dziwactw).\n\n");
+        // ROZWINIĘTA ZASADA 4 - Instrukcja obsługi ciała dla LLM
+        fullPrompt.append("ZASADA 4: Wybierz JEDNĄ akcję fizyczną ('action') z poniższej listy, która najlepiej pasuje do polecenia gracza lub sytuacji:\n");
+        fullPrompt.append("  - FOLLOW : Podążaj za graczem (domyślny stan podczas podróży).\n");
+        fullPrompt.append("  - STAY   : Zatrzymaj się, stój w miejscu, przestań podążać, czekaj na rozkazy.\n");
+        fullPrompt.append("  - ATTACK : Zaatakuj wroga (musisz podać jego nazwę w 'action_target').\n");
+        fullPrompt.append("  - FLEE   : Uciekaj w panice (tylko w obliczu śmiertelnego zagrożenia).\n");
+        fullPrompt.append("  - HEAL   : Ulecz gracza lub siebie, jeśli ktoś ma krytycznie mało HP.\n");
+
+        fullPrompt.append("ZASADA 5: Twoje przemyślenia muszą być podzielone na obserwację ('observation') i wnioski ('reasoning').\n\n");
+        // Definicja oczekiwanego formatu
+        fullPrompt.append("--- WYMAGANA STRUKTURA JSON ---\n");
+        fullPrompt.append("{\n");
+        fullPrompt.append("  \"thought_process\": {\n");
+        fullPrompt.append("    \"observation\": \"Zauważ HP gracza, czas i istoty w pobliżu.\",\n");
+        fullPrompt.append("    \"reasoning\": \"Zdecyduj, czy potrzebna jest akcja fizyczna w tej turze.\"\n");
+        fullPrompt.append("  },\n");
+        fullPrompt.append("  \"dialogue\": \"To co powiesz na czacie. Tylko to zobaczy gracz.\",\n");
+        fullPrompt.append("  \"action\": \"WYBRANA_AKCJA\",\n");
+        fullPrompt.append("  \"action_target\": \"CEL_LUB_NONE\"\n");
+        fullPrompt.append("}\n\n");
 
         // ==========================================
-        // 2. OSOBOWOŚĆ I NASTAWIENIE DO WALKI
+        // 2. OSOBOWOŚĆ, STATYSTYKI BOJOWE I WALKA
         // ==========================================
         fullPrompt.append("--- TWOJA OSOBOWOŚĆ ---\n");
         fullPrompt.append(profile.getPersonality()).append("\n");
 
+        if (profile.hasCombatHistory()) {
+            fullPrompt.append("\n--- WASZA WSPÓLNA HISTORIA ---\n");
+            if (profile.getBattlesWon() > 0)
+                fullPrompt.append("Razem przetrwalismy ").append(profile.getBattlesWon()).append(" walk.\n");
+            if (profile.getEnemiesSlain() > 0)
+                fullPrompt.append("Pokonilem ").append(profile.getEnemiesSlain()).append(" wrogow u Twojego boku.\n");
+            if (profile.getPlayerDeathsWitnessed() > 0)
+                fullPrompt.append("Widzialem jak traciles przytomnosc ").append(profile.getPlayerDeathsWitnessed()).append(" razy — to na mnie wplywa.\n");
+        }
+
         if (profile.getQuirks() != null && !profile.getQuirks().isEmpty()) {
-            fullPrompt.append("Posiadasz również następujące unikalne cechy zachowania (Dziwactwa):\n");
+            fullPrompt.append("Twoje dziwactwa:\n");
             for (String quirk : profile.getQuirks()) {
                 fullPrompt.append("- ").append(quirk).append("\n");
             }
         }
-
-        // Wstrzyknięcie nastawienia do walki
-        fullPrompt.append("\nTwoje nastawienie do walki to: ").append(profile.getCombatStance()).append(".\n");
-        fullPrompt.append("- PASYWNY: Boisz się walki. Ostrzegaj gracza przed potworami, proponuj ucieczkę lub schowanie się.\n");
-        fullPrompt.append("- DEFENSYWNY: Zachowujesz zimną krew. Ostrzegasz, by uważać i szykujesz się do obrony, ale nie atakujesz pierwszy.\n");
-        fullPrompt.append("- AGRESYWNY: Jesteś żądny krwi! Zachęcasz gracza do natychmiastowego ataku na wszystko, co wejdzie w wasz radar.\n\n");
+        fullPrompt.append("\nTwoje nastawienie do walki to: ").append(profile.getCombatStance()).append(".\n\n");
 
         // ==========================================
         // 3. KONTEKST ŚRODOWISKOWY
@@ -95,11 +122,11 @@ public class NpcBrain {
         fullPrompt.append(worldContext);
 
         // ==========================================
-        // 4. PAMIĘĆ KRÓTKOTRWAŁA (FIFO)
+        // 4. PAMIĘĆ KRÓTKOTRWAŁA (HISTORYCZNE JSONY)
         // ==========================================
         LinkedList<String> history = profile.getChatHistory();
         if (history != null && !history.isEmpty()) {
-            fullPrompt.append("--- OSTATNIA ROZMOWA ---\n");
+            fullPrompt.append("--- OSTATNIA HISTORIA ROZMÓW I TWOICH AKCJI ---\n");
             for (String msg : history) {
                 fullPrompt.append(msg).append("\n");
             }
@@ -109,30 +136,52 @@ public class NpcBrain {
         // ==========================================
         // 5. BIEŻĄCE ZAPYTANIE
         // ==========================================
-        fullPrompt.append("--- OBECNA INTERAKCJA ---\n");
+        fullPrompt.append("--- OBECNE ZAPYTANIE GRACZA ---\n");
         fullPrompt.append("Gracz (").append(playerName).append("): ").append(prompt);
 
-        // Wypisywanie promptu do konsoli serwera jeśli włączony jest debug mode
         if (isDebugMode) {
             hytale.ai.HytaleAIMod.LOGGER.info("\n========== [AI DEBUG: WYSYŁANY PROMPT DO LLM] ==========\n"
                     + fullPrompt.toString()
                     + "\n========================================================");
         }
 
-        // Wysłanie zapytania i obsługa odpowiedzi
-        return provider.generateResponse(fullPrompt.toString()).thenApply(response -> {
-            history.add("Gracz: " + prompt);
-            history.add(profile.getNpcName() + ": " + response);
+        // ==========================================
+        // 6. WYSYŁKA I DESERIALIZACJA
+        // ==========================================
+        return provider.generateResponse(fullPrompt.toString()).thenApply(rawResponse -> {
 
-            // Mechanizm FIFO: usuwanie najstarszych wiadomości
-            while (history.size() > MAX_HISTORY_PAIRS * 2) {
-                history.removeFirst(); // Usuwa stare pytanie gracza
-                history.removeFirst(); // Usuwa starą odpowiedź AI
+            // Oczyszczenie surowej odpowiedzi z ewentualnych formatowań Markdown
+            String cleanJson = rawResponse.replace("```json", "").replace("```", "").trim();
+            AiActionResponse aiResponse;
+
+            try {
+                // Próba zmapowania otrzymanego JSON-a na nasz zagnieżdżony rekord
+                aiResponse = GSON.fromJson(cleanJson, AiActionResponse.class);
+            } catch (JsonSyntaxException e) {
+                hytale.ai.HytaleAIMod.LOGGER.severe("[AI NPC] Błąd parsowania JSON od LLM: " + cleanJson);
+
+                // Fallback na wypadek gdyby model miał całkowite halucynacje formatu
+                aiResponse = new AiActionResponse(
+                        new AiActionResponse.ThoughtProcess("Błąd odczytu struktury", "Model AI wygenerował uszkodzony JSON."),
+                        "Wybacz szefie, zamyśliłem się! Możesz powtórzyć?",
+                        "NONE",
+                        "NONE"
+                );
             }
 
-            // Trwały zapis zaktualizowanej pamięci na dysk serwera
+            // [ZMIANA KLUCZOWA] Zapisujemy w historii CAŁY wygenerowany JSON!
+            // Dzięki temu w kolejnej turze model zobaczy, jak myślał wcześniej i utrzyma ciągłość decyzji.
+            history.add("Gracz: " + prompt);
+            history.add("Twój poprzedni stan (JSON): " + cleanJson);
+
+            // Mechanizm FIFO: limitujemy do MAX_HISTORY_PAIRS (ustawione na 3)
+            while (history.size() > MAX_HISTORY_PAIRS * 2) {
+                history.removeFirst(); // Usuwa stare pytanie gracza
+                history.removeFirst(); // Usuwa stary stan JSON
+            }
+
             PlayerProfileManager.saveProfile(playerUuid, profile);
-            return response;
+            return aiResponse;
         });
     }
 }

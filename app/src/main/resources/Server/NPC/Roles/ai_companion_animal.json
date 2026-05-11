@@ -1,0 +1,158 @@
+{
+  "Type": "Generic",
+  "Parameters": {
+    "MaxHealth": {
+      "Value": 120,
+      "Description": "Maksymalne HP zwierzecego kompana"
+    }
+  },
+  "StartState": "Idle",
+  "Appearance": "Wolf_Black",
+  "MaxHealth": {
+    "Compute": "MaxHealth"
+  },
+  "MotionControllerList": [
+    {
+      "Type": "Walk",
+      "MaxWalkSpeed": 6,
+      "RunThreshold": 0.5,
+      "Gravity": 10,
+      "Acceleration": 14
+    }
+  ],
+  "Instructions": [
+    {
+      "Instructions": [
+        {
+          "$Comment": "1. IDLE - Stoi w miejscu",
+          "Sensor": { "Type": "State", "State": "Idle" },
+          "BodyMotion": { "Type": "Nothing" }
+        },
+        {
+          "$Comment": "2. FOLLOW - Podaza za graczem",
+          "Sensor": { "Type": "State", "State": "Follow" },
+          "Instructions": [
+            {
+              "Sensor": { "Type": "Mob", "Range": 20, "LockOnTarget": true },
+              "Actions": [{ "Type": "State", "State": "Attack" }]
+            },
+            {
+              "Sensor": { "Type": "Player", "Range": 100, "LockOnTarget": true },
+              "BodyMotion": { "Type": "Seek", "StopDistance": 2.5 }
+            }
+          ]
+        },
+        {
+          "$Comment": "3. ATTACK - Wyszukuje i atakuje pobliskich wrogow",
+          "Sensor": { "Type": "State", "State": "Attack" },
+          "Instructions": [
+            {
+              "Sensor": {
+                "Type": "Mob",
+                "Range": 20,
+                "LockOnTarget": true
+              },
+              "Instructions": [
+                {
+                  "Sensor": {
+                    "Type": "Target",
+                    "Range": 2.0,
+                    "Filters": [{ "Type": "LineOfSight" }]
+                  },
+                  "ActionsBlocking": true,
+                  "Actions": [
+                    {
+                      "Type": "Attack",
+                      "Attack": "Root_NPC_ai_companion_attack",
+                      "AttackPauseRange": [0.8, 1.5]
+                    }
+                  ],
+                  "HeadMotion": { "Type": "Aim", "RelativeTurnSpeed": 2.0 }
+                },
+                {
+                  "Sensor": { "Type": "Target" },
+                  "BodyMotion": { "Type": "Seek", "StopDistance": 1.2, "RelativeSpeed": 1.8 }
+                }
+              ]
+            },
+            {
+              "Sensor": { "Type": "Any" },
+              "Actions": [{ "Type": "State", "State": "Follow" }]
+            }
+          ]
+        },
+        {
+          "$Comment": "4. FLEE - Ucieka od gracza; gdy zagrozenie minie przechodzi do Heal",
+          "Sensor": { "Type": "State", "State": "Flee" },
+          "Instructions": [
+            {
+              "Sensor": { "Type": "Player", "Range": 20 },
+              "BodyMotion": { "Type": "Flee" }
+            },
+            {
+              "Sensor": { "Type": "Any" },
+              "Actions": [{ "Type": "State", "State": "Heal" }]
+            }
+          ]
+        },
+        {
+          "$Comment": "5. HEAL - Stoi i sie leczy (Java); gdy pojawi sie wrog ucieka",
+          "Sensor": { "Type": "State", "State": "Heal" },
+          "Instructions": [
+            {
+              "Sensor": { "Type": "Mob", "Range": 15 },
+              "Actions": [{ "Type": "State", "State": "Flee" }]
+            },
+            {
+              "Sensor": { "Type": "Any" },
+              "BodyMotion": { "Type": "Nothing" }
+            }
+          ]
+        },
+        {
+          "$Comment": "6. TALK - Stoi i patrzy na gracza (zwierze nie ma animacji dialogu)",
+          "Sensor": { "Type": "State", "State": "Talk" },
+          "Instructions": [
+            {
+              "Continue": true,
+              "Sensor": { "Type": "Player", "Range": 30 },
+              "HeadMotion": { "Type": "Watch" }
+            },
+            {
+              "Sensor": { "Type": "Any" },
+              "BodyMotion": { "Type": "Nothing" },
+              "ActionsBlocking": true,
+              "Actions": [
+                { "Type": "Timeout", "Delay": [3, 3] },
+                { "Type": "State", "State": "Idle" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "InteractionInstruction": {
+    "$Comment": "Klikniecie prawym przyciskiem inicjuje dialog - obslugiwane przez Jave",
+    "Instructions": [
+      {
+        "Continue": true,
+        "Sensor": { "Type": "Any" },
+        "Actions": [{ "Type": "SetInteractable", "Interactable": true }]
+      },
+      {
+        "Sensor": { "Type": "HasInteracted" },
+        "Instructions": [
+          {
+            "Sensor": { "Type": "Any" },
+            "Actions": [
+              { "Type": "LockOnInteractionTarget" },
+              { "Type": "State", "State": "Talk" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "NameTranslationKey": "server.npcRoles.ai_companion_animal.name"
+}

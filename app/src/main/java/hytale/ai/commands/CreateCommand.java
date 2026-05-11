@@ -3,68 +3,58 @@ package hytale.ai.commands;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import hytale.ai.HytaleAIMod;
+import hytale.ai.config.ArchetypeRegistry;
 import hytale.ai.config.CompanionProfile;
-import hytale.ai.config.PlayerProfileManager;
 import hytale.ai.config.PlayerSettings;
-import hytale.ai.npc.QuirkGenerator;
+import hytale.ai.config.WizardState;
+
 import java.util.UUID;
+
 /**
- * Inicjalizuje proces kreacji nowego wirtualnego bytu (NPC).
- * Odpowiada za alokację pamięci dla profilu, przydzielenie modelu oraz
- * wywołanie proceduralnego generatora cech (QuirkGenerator).
+ * Krok 1 kreatora postaci: gracz podaje imie kompana, a system wyswietla
+ * pelna liste archetypow do wyboru. Nastepnym krokiem jest !ai -pick <numer>.
  */
 public class CreateCommand implements AICommand {
+
     @Override
     public void execute(PlayerRef sender, UUID playerUuid, String[] args, HytaleAIMod mod) {
+        if (args.length < 2) {
+            sender.sendMessage(Message.raw("[System] Uzycie: !ai -create <Imie>"));
+            return;
+        }
+
         PlayerSettings settings = mod.getPlayerSettingsMap().get(playerUuid);
         if (settings == null || !settings.hasKey()) {
             sender.sendMessage(Message.raw("[System] Najpierw musisz dodac klucz API: !ai -setup <klucz>"));
             return;
         }
 
-        if (args.length < 3) {
-            sender.sendMessage(Message.raw("[System] Uzycie: !ai -create <Imie> <Model> [Losowosc: 0-3]"));
+        String newName = args[1].trim();
+        if (newName.isEmpty()) {
+            sender.sendMessage(Message.raw("[System] Imie nie moze byc puste."));
             return;
         }
 
-        String newName = args[1];
-        String newModel = args[2];
-        int randLevel = 0;
-        if (args.length >= 4) {
-            try { randLevel = Integer.parseInt(args[3]); } catch (Exception ignored) {}
-            if (randLevel > 3) randLevel = 3;
-            if (randLevel < 0) randLevel = 0;
-        }
-
         CompanionProfile profile = mod.getPlayerProfiles().getOrDefault(playerUuid, new CompanionProfile());
-        int finalRandLevel = randLevel;
 
-        Runnable createAction = () -> {
-            profile.setNpcName(newName);
-            profile.setInGameModel(newModel);
-            profile.setSummoned(false);
-            profile.setRandomnessLevel(finalRandLevel);
-            profile.setQuirks(QuirkGenerator.generateQuirks(finalRandLevel));
-            profile.getChatHistory().clear();
-
-            PlayerProfileManager.saveProfile(playerUuid, profile);
-            mod.getPlayerProfiles().put(playerUuid, profile);
-            mod.getActiveCompanions().remove(playerUuid);
-            mod.despawnCompanion(playerUuid, sender.getReference().getStore());
-
-            sender.sendMessage(Message.raw("[System] Stworzono kompana: " + newName + " (Losowosc: " + finalRandLevel + "). Uzyj '!ai -summon'"));
+        Runnable startWizard = () -> {
+            WizardState wizard = new WizardState(newName);
+            mod.getActiveWizards().put(playerUuid, wizard);
+            sender.sendMessage(Message.raw(ArchetypeRegistry.get().formatList()));
+            sender.sendMessage(Message.raw("[System] Imie: '" + newName + "' | Wpisz !ai -pick <numer> aby wybrac archetyp. (Wygasa za 5 min)"));
         };
 
         if (profile.getNpcName() != null && !profile.getNpcName().isEmpty()) {
-            sender.sendMessage(Message.raw("[System] Masz juz kompana. Zostanie nadpisany! Wpisz !ai -confirm"));
-            mod.getPendingConfirmations().put(playerUuid, createAction);
+            sender.sendMessage(Message.raw("[System] Masz juz kompana o imieniu '" + profile.getNpcName() + "'. Zostanie zastapiony! Wpisz !ai -confirm."));
+            mod.getPendingConfirmations().put(playerUuid, startWizard);
         } else {
-            createAction.run();
+            startWizard.run();
         }
     }
 
     @Override
     public String getDescription() {
-        return "Tworzy nowego kompana (Imie, Model, Losowosc 0-3).";
+        return "Uruchamia kreatora nowego kompana (podaj imie, potem wybierz archetyp).";
     }
+
 }

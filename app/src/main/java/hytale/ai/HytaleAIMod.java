@@ -2,13 +2,13 @@ package hytale.ai;
 
 import hytale.ai.api.GeminiProvider;
 import hytale.ai.commands.CommandManager;
-import hytale.ai.config.CompanionProfile;
-import hytale.ai.config.PlayerProfileManager;
-import hytale.ai.config.PlayerSettings;
-import hytale.ai.config.PlayerSettingsManager;
-import hytale.ai.npc.NpcBrain;
+import hytale.ai.config.*;
+import hytale.ai.npc.*;
+import hytale.ai.rl.CompanionCombatSystem;
+import hytale.ai.rl.QLearningAgent;
 
 import com.hypixel.hytale.server.core.HytaleServer;
+import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
@@ -37,30 +37,37 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 
-/**
- * Główna klasa modyfikacji (Entry Point) implementująca inteligentnych kompanów NPC w grze Hytale.
- */
 public class HytaleAIMod extends JavaPlugin {
 
     public static final Logger LOGGER = Logger.getLogger("AI-NPC");
+    private static final Pattern DIACRITICS_PATTERN = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
 
     private final Map<UUID, NpcBrain> activeCompanions = new ConcurrentHashMap<>();
     private final Map<UUID, CompanionProfile> playerProfiles = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerSettings> playerSettingsMap = new ConcurrentHashMap<>();
     private final Map<UUID, Ref<EntityStore>> activeCompanionEntities = new ConcurrentHashMap<>();
+    private final Map<UUID, CompanionController> activeControllers = new ConcurrentHashMap<>();
     private final Map<UUID, Runnable> pendingConfirmations = new ConcurrentHashMap<>();
+    private final Map<UUID, WizardState> activeWizards = new ConcurrentHashMap<>();
+
+    private final QLearningAgent rlAgent = new QLearningAgent();
 
     public HytaleAIMod(JavaPluginInit init) {
         super(init);
     }
 
+    // --- Publiczne akcesory ---
     public Map<UUID, CompanionProfile> getPlayerProfiles() { return playerProfiles; }
     public Map<UUID, PlayerSettings> getPlayerSettingsMap() { return playerSettingsMap; }
     public Map<UUID, Runnable> getPendingConfirmations() { return pendingConfirmations; }
     public Map<UUID, Ref<EntityStore>> getActiveCompanionEntities() { return activeCompanionEntities; }
     public Map<UUID, NpcBrain> getActiveCompanions() { return activeCompanions; }
+    public Map<UUID, CompanionController> getActiveControllers() { return activeControllers; }
+    public Map<UUID, WizardState> getActiveWizards() { return activeWizards; }
+    public QLearningAgent getRlAgent() { return rlAgent; }
 
     @Override
     public void setup0() {
@@ -69,48 +76,31 @@ public class HytaleAIMod extends JavaPlugin {
 
         PlayerProfileManager.init();
         PlayerSettingsManager.init();
+        ArchetypeRegistry.get().load();
+        TalkLines.get().load();
+        rlAgent.load();
 
-        getEntityStoreRegistry().registerSystem(new RefSystem<EntityStore>() {
-            @Override
-            public Query<EntityStore> getQuery() {
-                return Query.and(DeathComponent.getComponentType());
+        // --- Zdarzenia gracza ---
+        HytaleServer.get().getEventBus().registerGlobal(PlayerConnectEvent.class, event -> {
+            UUID playerUuid = event.getPlayerRef().getUuid();
+
+            CompanionProfile profile = PlayerProfileManager.loadProfile(playerUuid);
+            if (profile != null) {
+                playerProfiles.put(playerUuid, profile);
             }
 
-            @Override
-            public void onEntityAdded(@Nonnull Ref<EntityStore> ref, @Nonnull AddReason reason, @Nonnull Store<EntityStore> store, @Nonnull CommandBuffer<EntityStore> commandBuffer) {
-                UUID deadPlayerUuid = null;
-                for (Map.Entry<UUID, Ref<EntityStore>> entry : activeCompanionEntities.entrySet()) {
-                    if (entry.getValue().equals(ref)) {
-                        deadPlayerUuid = entry.getKey();
-                        break;
-                    }
-                }
-
-                if (deadPlayerUuid != null) {
-                    CompanionProfile profile = playerProfiles.get(deadPlayerUuid);
-                    if (profile != null) {
-                        profile.setSummoned(false);
-                        profile.setDeathTimestamp(System.currentTimeMillis());
-                        PlayerProfileManager.saveProfile(deadPlayerUuid, profile);
-
-                        World world = store.getExternalData().getWorld();
-                        for (PlayerRef player : world.getPlayerRefs()) {
-                            if (player.getUuid().equals(deadPlayerUuid)) {
-                                player.sendMessage(Message.raw("[System] Twoj kompan " + profile.getNpcName() + " stracil przytomnosc!"));
-                                break;
-                            }
-                        }
-                        activeCompanionEntities.remove(deadPlayerUuid);
-                    }
-                }
+            PlayerSettings settings = PlayerSettingsManager.loadSettings(playerUuid);
+            if (settings != null) {
+                playerSettingsMap.put(playerUuid, settings);
             }
-            @Override
-            public void onEntityRemove(@Nonnull Ref<EntityStore> ref, @Nonnull RemoveReason reason, @Nonnull Store<EntityStore> store, @Nonnull CommandBuffer<EntityStore> commandBuffer) {}
+
+            LOGGER.info("[HytaleAI] Zaladowano dane gracza: " + playerUuid);
         });
 
         HytaleServer.get().getEventBus().registerGlobal(PlayerDisconnectEvent.class, event -> {
             UUID playerUuid = event.getPlayerRef().getUuid();
             CompanionProfile profile = playerProfiles.get(playerUuid);
+
             if (profile == null) profile = PlayerProfileManager.loadProfile(playerUuid);
 
             if (profile != null) {
@@ -125,7 +115,59 @@ public class HytaleAIMod extends JavaPlugin {
             activeCompanions.remove(playerUuid);
             playerProfiles.remove(playerUuid);
             playerSettingsMap.remove(playerUuid);
+            activeControllers.remove(playerUuid);
+            activeWizards.remove(playerUuid);
+
+            rlAgent.save();
+            LOGGER.info("[HytaleAI] Wyczyszczono dane gracza: " + playerUuid);
         });
+
+        // --- System ECS: smierc kompana ---
+        getEntityStoreRegistry().registerSystem(new RefSystem<EntityStore>() {
+            @Override
+            public Query<EntityStore> getQuery() {
+                return Query.and(DeathComponent.getComponentType());
+            }
+
+            @Override
+            public void onEntityAdded(@Nonnull Ref<EntityStore> ref, @Nonnull AddReason reason,
+                                       @Nonnull Store<EntityStore> store, @Nonnull CommandBuffer<EntityStore> commandBuffer) {
+                UUID deadOwner = null;
+                for (Map.Entry<UUID, Ref<EntityStore>> entry : activeCompanionEntities.entrySet()) {
+                    if (entry.getValue().equals(ref)) {
+                        deadOwner = entry.getKey();
+                        break;
+                    }
+                }
+
+                if (deadOwner != null) {
+                    CompanionProfile profile = playerProfiles.get(deadOwner);
+                    if (profile != null) {
+                        profile.setSummoned(false);
+                        profile.setDeathTimestamp(System.currentTimeMillis());
+                        PlayerProfileManager.saveProfile(deadOwner, profile);
+
+                        World world = store.getExternalData().getWorld();
+                        for (PlayerRef player : world.getPlayerRefs()) {
+                            if (player.getUuid().equals(deadOwner)) {
+                                player.sendMessage(Message.raw("[System] Twoj kompan " + profile.getNpcName() + " stracil przytomnosc!"));
+                                break;
+                            }
+                        }
+                        activeCompanionEntities.remove(deadOwner);
+                        activeControllers.remove(deadOwner);
+                    }
+                }
+            }
+
+            @Override
+            public void onEntityRemove(@Nonnull Ref<EntityStore> ref, @Nonnull RemoveReason reason,
+                                        @Nonnull Store<EntityStore> store, @Nonnull CommandBuffer<EntityStore> commandBuffer) {}
+        });
+
+        // --- Systemy RL i reakcji spontanicznych ---
+        getEntityStoreRegistry().registerSystem(new CompanionCombatSystem(this, rlAgent));
+        getEntityStoreRegistry().registerSystem(new SpontaneousReactionSystem(this));
 
         new CommandManager(this);
     }
@@ -133,6 +175,7 @@ public class HytaleAIMod extends JavaPlugin {
     public void processNaturalConversation(PlayerRef sender, UUID playerUuid, String prompt) {
         PlayerSettings settings = playerSettingsMap.get(playerUuid);
         CompanionProfile profile = playerProfiles.get(playerUuid);
+        CompanionController controller = activeControllers.get(playerUuid);
 
         if (settings == null || !settings.hasKey()) {
             sender.sendMessage(Message.raw("[System] Brak klucza API (!ai -setup <klucz>)."));
@@ -152,15 +195,17 @@ public class HytaleAIMod extends JavaPlugin {
         });
 
         Ref<EntityStore> companionRef = activeCompanionEntities.get(playerUuid);
-        Store<EntityStore> store = sender.getReference().getStore();
+        Ref<EntityStore> playerEntityRef = sender.getReference();
+        if (playerEntityRef == null) return;
+        Store<EntityStore> store = playerEntityRef.getStore();
+        if (store == null) return;
 
-        if(store == null) return;
         World world = store.getExternalData().getWorld();
         CompletableFuture<String> contextFuture = new CompletableFuture<>();
 
         world.execute(() -> {
             try {
-                String ctx = hytale.ai.npc.WorldContextBuilder.buildContext(sender.getReference(), companionRef);
+                String ctx = WorldContextBuilder.buildContext(playerEntityRef, companionRef);
                 contextFuture.complete(ctx);
             } catch (Exception e) {
                 LOGGER.warning("[AI NPC] Blad budowania kontekstu: " + e.getMessage());
@@ -169,39 +214,67 @@ public class HytaleAIMod extends JavaPlugin {
         });
 
         contextFuture.thenCompose(worldContext -> brain.chatWithPlayer(sender.getUsername(), prompt, worldContext, settings.isDebugMode()))
-                .thenAccept(response -> {
-                    String cleanResponse = removeDiacritics(response);
+                .thenAccept(aiResponse -> {
+                    String cleanResponse = removeDiacritics(aiResponse.dialogue());
                     sender.sendMessage(Message.raw("[" + profile.getNpcName() + "] " + cleanResponse));
+
+                    if (settings.isDebugMode()) {
+                        LOGGER.info("[Mysl Kompana]: " + aiResponse.thought_process());
+                    }
+
+                    world.execute(() -> {
+                        if (controller != null) {
+                            controller.handleAiDecision(aiResponse);
+                        }
+                    });
+                }).exceptionally(ex -> {
+                    LOGGER.severe("[AI NPC] Blad LLM: " + ex.getMessage());
+                    ex.printStackTrace();
+                    return null;
                 });
     }
 
     public void spawnCompanion(UUID playerUuid, CompanionProfile profile, Ref<EntityStore> playerRef) {
+        if (playerRef == null) return;
         Store<EntityStore> store = playerRef.getStore();
-        if(store == null) return;
+        if (store == null) return;
         World world = store.getExternalData().getWorld();
 
         world.execute(() -> {
             TransformComponent transform = store.getComponent(playerRef, TransformComponent.getComponentType());
             if (transform == null) return;
 
-            Vector3d playerPos = transform.getPosition();
-            Vector3d spawnPos = new Vector3d(playerPos.getX() + 2.0, playerPos.getY(), playerPos.getZ() + 2.0);
+            Vector3d pos = transform.getPosition();
+            Vector3d spawnPos = new Vector3d(pos.getX() + 2.0, pos.getY(), pos.getZ() + 2.0);
 
             try {
-                var result = NPCPlugin.get().spawnNPC(store, "test_pet", profile.getNpcName(), spawnPos, new Vector3f(0, 0, 0));
-                if (result != null) {
+                String npcId = profile.getRoleId();
+                LOGGER.info("[AI NPC] Spawnowanie kompana: ID=" + npcId + " model=" + profile.getInGameModel());
+
+                var result = NPCPlugin.get().spawnNPC(store, npcId, profile.getNpcName(), spawnPos, new Vector3f(0, 0, 0));
+
+                if (result != null && result.first() != null) {
                     Ref<EntityStore> npcRef = result.first();
                     activeCompanionEntities.put(playerUuid, npcRef);
+
+                    CompanionController controller = new CompanionController(npcRef, playerRef, store, playerUuid);
+                    activeControllers.put(playerUuid, controller);
+
                     NPCEntity.setAppearance(npcRef, profile.getInGameModel(), store);
+                    LOGGER.info("[AI NPC] Spawning OK: " + profile.getNpcName());
+                } else {
+                    LOGGER.severe("[AI NPC] spawnNPC zwrocilo NULL dla ID: " + npcId);
                 }
             } catch (Exception e) {
-                LOGGER.severe("[AI NPC] Blad spawnowania!");
+                LOGGER.severe("[AI NPC] Blad spawnowania: " + e.getMessage());
+                e.printStackTrace();
             }
         });
     }
 
     public void despawnCompanion(UUID playerUuid, Store<EntityStore> store) {
         Ref<EntityStore> entityRef = activeCompanionEntities.remove(playerUuid);
+        activeControllers.remove(playerUuid);
         if (entityRef != null && entityRef.isValid()) {
             World world = store.getExternalData().getWorld();
             world.execute(() -> {
@@ -213,6 +286,6 @@ public class HytaleAIMod extends JavaPlugin {
     private String removeDiacritics(String text) {
         if (text == null) return "";
         String normalized = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD);
-        return normalized.replaceAll("\\p{InCombiningDiacriticalMarks}+", "").replace('ł', 'l').replace('Ł', 'L');
+        return DIACRITICS_PATTERN.matcher(normalized).replaceAll("").replace('ł', 'l').replace('Ł', 'L');
     }
 }

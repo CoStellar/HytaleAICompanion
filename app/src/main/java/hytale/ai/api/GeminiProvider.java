@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
  * Klasa wykorzystuje natywnego klienta Java 11 (HttpClient) do wysyłania
  * asynchronicznych żądań typu POST, zapewniając, że główny wątek serwera Hytale
  * nie jest blokowany podczas oczekiwania na odpowiedź od serwerów Google.
+ * Posiada wbudowaną obsługę Native JSON Mode oraz bezpieczne mechanizmy awaryjne (Fallback).
  * </p>
  */
 public class GeminiProvider implements AIService {
@@ -36,7 +37,8 @@ public class GeminiProvider implements AIService {
      * Metoda automatycznie sanitizuje wejście (usuwa białe znaki) i aplikuje model domyślny,
      * jeśli użytkownik nie podał żadnego w konfiguracji.
      * </p>
-     * * @param apiKey Prywatny klucz API Google wygenerowany przez gracza.
+     *
+     * @param apiKey Prywatny klucz API Google wygenerowany przez gracza.
      * @param aiModel Nazwa modelu językowego (np. "gemini-2.5-flash").
      */
     public GeminiProvider(String apiKey, String aiModel) {
@@ -64,11 +66,15 @@ public class GeminiProvider implements AIService {
      * Wysyła asynchroniczne zapytanie (Prompt) do modelu LLM i przetwarza odpowiedź.
      * <p>
      * Metoda buduje zagnieżdżoną strukturę JSON wymaganą przez specyfikację Google Gemini,
-     * wysyła ją przez HTTP POST, a po otrzymaniu odpowiedzi przeszukuje drzewo JSON
-     * w celu wyciągnięcia wygenerowanego tekstu. Posiada wbudowaną obsługę błędów HTTP.
+     * wymuszając jednocześnie natywny format odpowiedzi (responseMimeType: application/json).
+     * Wysyła żądanie przez HTTP POST, a po otrzymaniu odpowiedzi przeszukuje drzewo JSON
+     * w celu wyciągnięcia wygenerowanego tekstu.
+     * W przypadku błędów sieciowych lub problemów z parsowaniem, zwraca bezpieczny,
+     * zapasowy ciąg JSON, zapobiegając awarii logiki Mózgu NPC.
      * </p>
-     * * @param prompt Pełny, sformatowany tekst zapytania (zawierający kontekst, zasady i pytanie).
-     * @return CompletableFuture reprezentujący tekstową odpowiedź od sztucznej inteligencji.
+     *
+     * @param prompt Pełny, sformatowany tekst zapytania (zawierający kontekst, zasady i pytanie gracza).
+     * @return CompletableFuture reprezentujący odpowiedź od AI w formacie ustrukturyzowanego JSON (jako String).
      */
     @Override
     public CompletableFuture<String> generateResponse(String prompt) {
@@ -88,6 +94,11 @@ public class GeminiProvider implements AIService {
         JsonObject requestBody = new JsonObject();
         requestBody.add("contents", contentsArray);
 
+        // ZABEZPIECZENIE HARDWARE'OWE: Wymuszenie na API natywnego trybu JSON
+        JsonObject generationConfig = new JsonObject();
+        generationConfig.addProperty("responseMimeType", "application/json");
+        requestBody.add("generationConfig", generationConfig);
+
         // Serializacja obiektu Java do ciągu znaków JSON
         String jsonString = gson.toJson(requestBody);
 
@@ -101,12 +112,14 @@ public class GeminiProvider implements AIService {
         // Asynchroniczne wysłanie żądania (Non-blocking I/O)
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
-                    // Obsługa błędów sieciowych (np. kod 403, 503)
+                    // Obsługa błędów sieciowych (np. kod 403, 503, filtry bezpieczeństwa Google)
+                    // Zwracamy awaryjny JSON, aby nie spowodować błędu deserializacji w NpcBrain
                     if (response.statusCode() != 200) {
-                        return "Błąd API: " + response.statusCode() + " (Sprawdź poprawność klucza API w konfiguracji)";
+                        System.err.println("[GeminiProvider] BŁĄD HTTP " + response.statusCode() + ": " + response.body());
+                        return "{\"thought_process\":{\"observation\":\"Błąd sieciowy lub filtry API.\",\"reasoning\":\"Serwer Google odrzucił zapytanie gracza.\"},\"dialogue\":\"Wybacz szefie, jakaś magiczna bariera zagłusza moje myśli... (Błąd API)\",\"action\":\"NONE\",\"action_target\":\"NONE\"}";
                     }
 
-                    // Bezpieczne parsowanie (Deserializacja) odpowiedzi JSON
+                    // Bezpieczne parsowanie (Deserializacja) odpowiedzi JSON od Google
                     try {
                         JsonObject jsonResponse = gson.fromJson(response.body(), JsonObject.class);
                         return jsonResponse.getAsJsonArray("candidates")
@@ -116,7 +129,9 @@ public class GeminiProvider implements AIService {
                                 .get(0).getAsJsonObject()
                                 .get("text").getAsString();
                     } catch (Exception e) {
-                        return "Błąd podczas parsowania odpowiedzi: " + e.getMessage();
+                        System.err.println("[GeminiProvider] Błąd parsowania węzłów JSON od Google: " + e.getMessage());
+                        // Zapasowy JSON w razie gdyby Google zmieniło strukturę odpowiedzi (np. brak 'candidates')
+                        return "{\"thought_process\":{\"observation\":\"Błąd parsowania odpowiedzi.\",\"reasoning\":\"Odpowiedź API była pusta lub miała nieznaną strukturę.\"},\"dialogue\":\"Chyba straciłem wątek... Możesz powtórzyć?\",\"action\":\"NONE\",\"action_target\":\"NONE\"}";
                     }
                 });
     }
