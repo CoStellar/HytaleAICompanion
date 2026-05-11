@@ -93,10 +93,20 @@ public class NpcBrain {
         fullPrompt.append("}\n\n");
 
         // ==========================================
-        // 2. OSOBOWOŚĆ I WALKA
+        // 2. OSOBOWOŚĆ, STATYSTYKI BOJOWE I WALKA
         // ==========================================
         fullPrompt.append("--- TWOJA OSOBOWOŚĆ ---\n");
         fullPrompt.append(profile.getPersonality()).append("\n");
+
+        if (profile.hasCombatHistory()) {
+            fullPrompt.append("\n--- WASZA WSPÓLNA HISTORIA ---\n");
+            if (profile.getBattlesWon() > 0)
+                fullPrompt.append("Razem przetrwalismy ").append(profile.getBattlesWon()).append(" walk.\n");
+            if (profile.getEnemiesSlain() > 0)
+                fullPrompt.append("Pokonilem ").append(profile.getEnemiesSlain()).append(" wrogow u Twojego boku.\n");
+            if (profile.getPlayerDeathsWitnessed() > 0)
+                fullPrompt.append("Widzialem jak traciles przytomnosc ").append(profile.getPlayerDeathsWitnessed()).append(" razy — to na mnie wplywa.\n");
+        }
 
         if (profile.getQuirks() != null && !profile.getQuirks().isEmpty()) {
             fullPrompt.append("Twoje dziwactwa:\n");

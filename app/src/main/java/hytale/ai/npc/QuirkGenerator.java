@@ -116,20 +116,21 @@ public class QuirkGenerator {
 
         while (budget > 0) {
             int maxPossibleCost = Math.min(budget, 3);
-            int cost = random.nextInt(maxPossibleCost) + 1; // Losowanie kosztu cechy (1, 2 lub 3)
+            int cost = random.nextInt(maxPossibleCost) + 1;
 
+            // Fallback: jeśli wylosowana kategoria jest pusta, próbuj niższe koszty
             String pickedQuirk = null;
-            if (cost == 1 && !temp1.isEmpty()) { pickedQuirk = temp1.remove(random.nextInt(temp1.size())); }
-            else if (cost == 2 && !temp2.isEmpty()) { pickedQuirk = temp2.remove(random.nextInt(temp2.size())); }
-            else if (cost == 3 && !temp3.isEmpty()) { pickedQuirk = temp3.remove(random.nextInt(temp3.size())); }
-
-            if (pickedQuirk != null) {
-                assignedQuirks.add(pickedQuirk);
-                budget -= cost;
-            } else {
-                // Zabezpieczenie przed nieskończoną pętlą (Gdy wylosowana kategoria jest już pusta)
-                break;
+            for (int c = cost; c >= 1; c--) {
+                List<String> pool = c == 3 ? temp3 : c == 2 ? temp2 : temp1;
+                if (!pool.isEmpty()) {
+                    pickedQuirk = pool.remove(random.nextInt(pool.size()));
+                    budget -= c;
+                    break;
+                }
             }
+
+            if (pickedQuirk == null) break; // Wszystkie dostępne kategorie wyczerpane
+            assignedQuirks.add(pickedQuirk);
         }
         return assignedQuirks;
     }

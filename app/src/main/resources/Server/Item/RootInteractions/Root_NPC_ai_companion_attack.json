@@ -1,0 +1,47 @@
+{
+  "Interactions": [
+    {
+      "Type": "Simple",
+      "Effects": {
+        "ItemAnimationId": "Attack"
+      },
+      "RunTime": 0.3,
+      "Next": {
+        "Type": "Selector",
+        "RunTime": 0.25,
+        "Selector": {
+          "Id": "Horizontal",
+          "Direction": "ToLeft",
+          "TestLineOfSight": false,
+          "ExtendTop": 1.0,
+          "ExtendBottom": 1.5,
+          "StartDistance": 0.1,
+          "EndDistance": 2.5,
+          "Length": 90,
+          "RollOffset": 0,
+          "YawStartOffset": -45
+        },
+        "HitEntity": {
+          "Interactions": [
+            {
+              "Parent": "DamageEntityParent",
+              "DamageCalculator": {
+                "Type": "Absolute",
+                "BaseDamage": { "Physical": 10 },
+                "RandomPercentageModifier": 0.15
+              },
+              "DamageEffects": {
+                "Knockback": { "Force": 0.4 }
+              }
+            }
+          ]
+        },
+        "Next": {
+          "Type": "Simple",
+          "RunTime": 0.1
+        }
+      }
+    }
+  ],
+  "Tags": { "Attack": ["Melee"] }
+}
