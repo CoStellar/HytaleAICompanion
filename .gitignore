@@ -30,3 +30,8 @@ crash-reports/git
 # DANE WRAŻLIWE (Bazy danych AI, klucze API)
 # ==========================================
 mods/AICompanion/players/
+DEVELOPMENT_STATUS.md
+CLAUDE.md
+next-session.md
+Hytale-Mod-Agent/
+DecompiledHytaleServer/

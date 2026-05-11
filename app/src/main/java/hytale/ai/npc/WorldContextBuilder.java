@@ -153,22 +153,19 @@ public class WorldContextBuilder {
                 }
             });
         }
-        // Pobieranie komponentu NPC
-        NPCEntity npcComponent = store.getComponent(companionRef, NPCEntity.getComponentType());
         String engineState = "Nieznany";
-
-        if (npcComponent != null && npcComponent.getRole() != null && npcComponent.getRole().getStateSupport() != null) {
-            try {
-                // Spróbuj użyć getState() lub getActiveState() w zależności od podpowiedzi IDE.
-                // Jeśli to wyrzuca błąd, sprawdź w IDE, jaka metoda zwraca aktualny stan (często to po prostu getState).
-                engineState = npcComponent.getRole().getStateSupport().getStateName();
-            } catch (Exception e) {
-                engineState = "Błąd_Odczytu";
+        if (companionRef != null && companionRef.isValid()) {
+            NPCEntity npcComponent = store.getComponent(companionRef, NPCEntity.getComponentType());
+            if (npcComponent != null && npcComponent.getRole() != null && npcComponent.getRole().getStateSupport() != null) {
+                try {
+                    engineState = npcComponent.getRole().getStateSupport().getStateName();
+                } catch (Exception e) {
+                    engineState = "Blad_Odczytu";
+                }
             }
         }
 
-        // POPRAWKA: Używamy 'context' zamiast 'contextBuilder'
-        context.append("Twój obecny fizyczny stan w silniku gry to: ").append(engineState).append("\n");
+        context.append("Twoj obecny fizyczny stan w silniku gry to: ").append(engineState).append("\n");
 
         if (nearbyEntities.isEmpty()) {
             context.append("- Czysto. W pobliżu nie ma żadnych istot.\n");

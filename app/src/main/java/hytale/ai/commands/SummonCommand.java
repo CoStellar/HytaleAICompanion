@@ -38,7 +38,9 @@ public class SummonCommand implements AICommand {
         if (profile.isSummoned()) {
             profile.setSummoned(false);
             PlayerProfileManager.saveProfile(playerUuid, profile);
-            mod.despawnCompanion(playerUuid, sender.getReference().getStore());
+            if (sender.getReference() != null && sender.getReference().getStore() != null) {
+                mod.despawnCompanion(playerUuid, sender.getReference().getStore());
+            }
             sender.sendMessage(Message.raw("[System] " + profile.getNpcName() + " zostal odeslany."));
         } else {
             profile.setSummoned(true);

@@ -33,7 +33,9 @@ public class DismissCommand implements AICommand {
 
             PlayerProfileManager.saveProfile(playerUuid, profile);
             mod.getActiveCompanions().remove(playerUuid);
-            mod.despawnCompanion(playerUuid, sender.getReference().getStore());
+            if (sender.getReference() != null && sender.getReference().getStore() != null) {
+                mod.despawnCompanion(playerUuid, sender.getReference().getStore());
+            }
             sender.sendMessage(Message.raw("[System] Zwierzak usuniety. Klucz API i ustawienia zachowane."));
         });
     }

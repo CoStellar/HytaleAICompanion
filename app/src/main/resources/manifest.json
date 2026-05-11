@@ -4,7 +4,7 @@
   "Name": "HytaleAIProject",
   "Version": "1.0.0",
   "Description": "Mod dodajacy NPC opartego na LLM",
-  "ServerVersion": "2026.02.19-1a311a592",
+  "ServerVersion": "2026.03.26-89796e57b",
   "Main": "hytale.ai.HytaleAIMod",
   "IncludesAssetPack": true
 }

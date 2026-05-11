@@ -2,29 +2,29 @@
   "Type": "Generic",
   "Parameters": {
     "MaxHealth": {
-      "Value": 100,
-      "Description": "Maksymalne HP kompana"
+      "Value": 120,
+      "Description": "Maksymalne HP zwierzecego kompana"
     }
   },
   "StartState": "Idle",
-  "Appearance": "Kweebec_Rootling",
+  "Appearance": "Wolf_Black",
   "MaxHealth": {
     "Compute": "MaxHealth"
   },
   "MotionControllerList": [
     {
       "Type": "Walk",
-      "MaxWalkSpeed": 5,
-      "RunThreshold": 0.6,
+      "MaxWalkSpeed": 6,
+      "RunThreshold": 0.5,
       "Gravity": 10,
-      "Acceleration": 12
+      "Acceleration": 14
     }
   ],
   "Instructions": [
     {
       "Instructions": [
         {
-          "$Comment": "1. IDLE - Stoi w miejscu (NONE / STAY)",
+          "$Comment": "1. IDLE - Stoi w miejscu",
           "Sensor": { "Type": "State", "State": "Idle" },
           "BodyMotion": { "Type": "Nothing" }
         },
@@ -38,12 +38,12 @@
             },
             {
               "Sensor": { "Type": "Player", "Range": 100, "LockOnTarget": true },
-              "BodyMotion": { "Type": "Seek", "StopDistance": 3.0 }
+              "BodyMotion": { "Type": "Seek", "StopDistance": 2.5 }
             }
           ]
         },
         {
-          "$Comment": "3. ATTACK - Wykrywa najblizszego NPC i atakuje",
+          "$Comment": "3. ATTACK - Wyszukuje i atakuje pobliskich wrogow",
           "Sensor": { "Type": "State", "State": "Attack" },
           "Instructions": [
             {
@@ -56,7 +56,7 @@
                 {
                   "Sensor": {
                     "Type": "Target",
-                    "Range": 2.5,
+                    "Range": 2.0,
                     "Filters": [{ "Type": "LineOfSight" }]
                   },
                   "ActionsBlocking": true,
@@ -64,14 +64,14 @@
                     {
                       "Type": "Attack",
                       "Attack": "Root_NPC_ai_companion_attack",
-                      "AttackPauseRange": [1.0, 2.0]
+                      "AttackPauseRange": [0.8, 1.5]
                     }
                   ],
                   "HeadMotion": { "Type": "Aim", "RelativeTurnSpeed": 2.0 }
                 },
                 {
                   "Sensor": { "Type": "Target" },
-                  "BodyMotion": { "Type": "Seek", "StopDistance": 1.5, "RelativeSpeed": 1.5 }
+                  "BodyMotion": { "Type": "Seek", "StopDistance": 1.2, "RelativeSpeed": 1.8 }
                 }
               ]
             },
@@ -110,16 +110,9 @@
           ]
         },
         {
-          "$Comment": "6. TALK - Stoi, patrzy na gracza i gra animacje Alerted",
+          "$Comment": "6. TALK - Stoi i patrzy na gracza (zwierze nie ma animacji dialogu)",
           "Sensor": { "Type": "State", "State": "Talk" },
           "Instructions": [
-            {
-              "Continue": true,
-              "Sensor": { "Type": "Any", "Once": true },
-              "Actions": [
-                { "Type": "PlayAnimation", "Slot": "Status", "Animation": "Alerted" }
-              ]
-            },
             {
               "Continue": true,
               "Sensor": { "Type": "Player", "Range": 30 },
@@ -131,7 +124,6 @@
               "ActionsBlocking": true,
               "Actions": [
                 { "Type": "Timeout", "Delay": [3, 3] },
-                { "Type": "PlayAnimation", "Slot": "Status" },
                 { "Type": "State", "State": "Idle" }
               ]
             }
@@ -141,7 +133,7 @@
     }
   ],
   "InteractionInstruction": {
-    "$Comment": "Prawy przycisk myszy inicjuje dialog z graczem - stan AiChat obslugiwany po stronie Javy",
+    "$Comment": "Klikniecie prawym przyciskiem inicjuje dialog - obslugiwane przez Jave",
     "Instructions": [
       {
         "Continue": true,
@@ -162,5 +154,5 @@
       }
     ]
   },
-  "NameTranslationKey": "server.npcRoles.ai_companion.name"
+  "NameTranslationKey": "server.npcRoles.ai_companion_animal.name"
 }

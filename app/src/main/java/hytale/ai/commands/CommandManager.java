@@ -35,6 +35,7 @@ public class CommandManager {
         commands.put("-setup", new SetupCommand());
         commands.put("-llm", new LlmCommand());
         commands.put("-create", new CreateCommand());
+        commands.put("-pick", new PickCommand());
         commands.put("-dismiss", new DismissCommand());
         commands.put("-info", new InfoCommand());
         commands.put("-personality", new PersonalityCommand());
@@ -63,20 +64,19 @@ public class CommandManager {
                 event.setCancelled(true); // Blokuje pokazanie "!ai coś tam" innym graczom
 
                 String rawArgs = message.substring(4).trim();
-                String[] splitArgs = rawArgs.split(" ");
+                String[] splitArgs = rawArgs.split("\\s+");
                 String commandName = splitArgs[0].toLowerCase();
 
                 // Sprawdzamy, czy gracz wpisał znaną nam komendę
                 if (commands.containsKey(commandName)) {
                     AICommand command = commands.get(commandName);
-                    // Przekazujemy sterowanie do znalezionej klasy
                     command.execute(sender, playerUuid, splitArgs, modInstance);
-                } else if (!commandName.startsWith("-")) {
-                    // To nie jest komenda techniczna (np. "-setup"), tylko zwykła wiadomość do AI
-                    // Przekazujemy to do domyślnego handlera rozmów
-                    modInstance.processNaturalConversation(sender, playerUuid, rawArgs);
-                } else {
+                } else if (commandName.startsWith("-")) {
+                    // Nieznana komenda techniczna (zaczyna się od "-")
                     sender.sendMessage(Message.raw("[System] Nieznana komenda. Wpisz !ai -help"));
+                } else {
+                    // Zwykła wiadomość do AI (nie zaczyna się od "-")
+                    modInstance.processNaturalConversation(sender, playerUuid, rawArgs);
                 }
             }
         });

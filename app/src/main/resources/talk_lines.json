@@ -1,0 +1,75 @@
+{
+  "critical_hp_no_enemies": [
+    "Trzeba sie zatrzymac, szefie! Prawie nie stoisz na nogach!",
+    "Sluchaj, moze odpoczniemy chwile? Wyglądasz fatalnie.",
+    "Nie powiem ci co masz robic, ale chyba powinienies sie opatrzyc...",
+    "Hej! Spojrz na siebie! Nie mozesz tak dalej walczyc!",
+    "Cos masz na twarzy... czyli krew. Stoj, daj sie opatrzyc."
+  ],
+  "critical_hp_combat": [
+    "Trzymaj sie! Chwile wytrzymaj!",
+    "Nie umieraj mi tutaj!",
+    "Oslon sie! Ja biore to na siebie!",
+    "Zostaje przy tobie! Nie pozwole im!",
+    "Skupiam sie na tobie - zostan za mna!"
+  ],
+  "after_heal": [
+    "Troche lepiej? Nie tak predko odejdziesz!",
+    "No! Tak lepiej. Trzymaj sie blisko mnie.",
+    "Masz swoje zycie z powrotem. Nie marnuj tego.",
+    "Gotowy? Bo oni jeszcze nie odpuszcili.",
+    "Zalezy mi na tobie, wiesz? Urazony sie nie wstydze."
+  ],
+  "enemy_spotted": [
+    "Cos sie zbliza... badz gotowy.",
+    "Widzisz to? Tam, za drzewami.",
+    "Uwaga! Mamy towarzystwo.",
+    "Nie lubię tego miejsca. Zbyt cicho.",
+    "Czuje cos niedobrego. Trzymaj bron."
+  ],
+  "battle_cry": [
+    "Do ataku!",
+    "Stac! Zaraz sie tym zajme!",
+    "No, to sie zaczyna!",
+    "Za mna!",
+    "Nie boje sie was!"
+  ],
+  "retreat": [
+    "Wycofujemy sie!",
+    "To nie ta walka!",
+    "Uciekamy! Teraz!",
+    "Zbyt ich wielu - odwrot!",
+    "Inne dni, inna walka - biegniemy!"
+  ],
+  "healing_companion": [
+    "Spokojnie, mam cie.",
+    "Bede przy tobie.",
+    "Nie ruszaj sie, lecze cie.",
+    "To tylko chwila, zaraz bedzie lepiej."
+  ],
+  "night_warning": [
+    "Robi sie ciemno... nie lubie tej pory.",
+    "Noc. Uwazaj na cienie.",
+    "Potwory wychodzą w nocy. Trzymaj sie blisko.",
+    "Czy tes slyeisz te odglosy? Z lasu...",
+    "Pali sie jakies ognisko? Chetnie bym sie rozgrzal."
+  ],
+  "water_warning": [
+    "Oddychaj! Nie dal dalej pod wode!",
+    "Wynurz sie! Nie moge ci pomoc tu na dole!",
+    "Hej! Musisz wyjsc z wody!",
+    "Powietrza! Potrzebujesz powietrza!"
+  ],
+  "player_hurt_ambient": [
+    "Oberwales? Mow mi co sie stalo!",
+    "Ktos cie zaatakowal? Powiedz mi kto!",
+    "Ta rana wyglada powazanie...",
+    "Chcesz sie zatrzymac? Nie musisz byc bohaterem."
+  ],
+  "follow_idle": [
+    "Gdzies idziemy?",
+    "Prowadz, podaze za toba.",
+    "Cicho tu dzis.",
+    "Ladny widok stad."
+  ]
+}
