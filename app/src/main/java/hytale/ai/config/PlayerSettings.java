@@ -21,10 +21,14 @@ public class PlayerSettings {
 
     public String getAiModel() { return aiModel; }
     public void setAiModel(String aiModel) { this.aiModel = aiModel; }
-    private boolean debugMode = false; // NOWE: Włącza logowanie do konsoli
+    private boolean debugMode = false;
+    private boolean rlEnabled = false;
 
     public boolean isDebugMode() { return debugMode; }
     public void setDebugMode(boolean debugMode) { this.debugMode = debugMode; }
+
+    public boolean isRlEnabled() { return rlEnabled; }
+    public void setRlEnabled(boolean rlEnabled) { this.rlEnabled = rlEnabled; }
     /**
      * Weryfikuje, czy gracz poprawnie zdefiniował swój klucz API.
      * @return true, jeśli klucz istnieje i nie jest pusty.

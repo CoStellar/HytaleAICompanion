@@ -65,7 +65,8 @@ public class PickCommand implements AICommand {
         mod.getActiveWizards().remove(playerUuid);
 
         CompanionProfile profile = mod.getPlayerProfiles().getOrDefault(playerUuid, new CompanionProfile());
-        List<String> quirks = QuirkGenerator.generateQuirks(profile.getRandomnessLevel());
+        int qLevel = profile.getRandomnessLevel() > 0 ? profile.getRandomnessLevel() : 2;
+        List<String> quirks = QuirkGenerator.generateQuirks(qLevel);
 
         sender.sendMessage(Message.raw("[System] Tworze kompana '" + pendingName + "' (" + chosen.getPolishName() + ")... Chwile!"));
 

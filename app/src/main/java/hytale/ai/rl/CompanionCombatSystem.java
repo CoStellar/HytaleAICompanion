@@ -31,6 +31,7 @@ import java.util.function.BiConsumer;
  * Globalny system taktyczny uruchamiany co ~2 sekundy.
  * Gdy kompan wykryje wrogow, przejmuje kontrole od LLM i uzywa Q-Learningu
  * do podejmowania decyzji bojowych w czasie rzeczywistym.
+ * Gdy rlEnabled=false, stosuje logike skryptowana opartą na nastawieniu gracza.
  */
 public class CompanionCombatSystem extends TickingSystem<EntityStore> {
 
@@ -38,14 +39,12 @@ public class CompanionCombatSystem extends TickingSystem<EntityStore> {
     private static final float RADAR_RADIUS_SQ = 900.0f; // 30 blokow
 
     private final HytaleAIMod mod;
-    private final QLearningAgent agent;
     private final Map<UUID, CombatObservation> previousObservations = new ConcurrentHashMap<>();
 
     private float elapsed = 0.0f;
 
-    public CompanionCombatSystem(HytaleAIMod mod, QLearningAgent agent) {
+    public CompanionCombatSystem(HytaleAIMod mod) {
         this.mod = mod;
-        this.agent = agent;
     }
 
     @Override
@@ -71,42 +70,105 @@ public class CompanionCombatSystem extends TickingSystem<EntityStore> {
     private void processCompanion(UUID playerUuid, PlayerRef playerRef,
                                    Ref<EntityStore> playerEntityRef, Ref<EntityStore> companionRef,
                                    Store<EntityStore> store) {
+        QLearningAgent agent = mod.getAgentForPlayer(playerUuid);
+        if (agent == null) return;
+
         float[] hpData = getPlayerHp(playerEntityRef, store);
         float playerHp = hpData[0];
         float playerMaxHp = hpData[1];
 
         RLState currentState = computeState(playerHp, playerMaxHp, playerEntityRef, companionRef, store);
 
-        CombatObservation prev = previousObservations.get(playerUuid);
-        if (prev != null) {
-            float reward = computeReward(prev, currentState, playerHp);
-            agent.update(prev.state, prev.action, reward, currentState);
+        CompanionController controller = mod.getActiveControllers().get(playerUuid);
+        if (controller != null) {
+            controller.setLastKnownState(currentState);
+            controller.refreshHudHp();
+        }
 
-            if (reward <= -10.0f) {
-                CompanionProfile profile = mod.getPlayerProfiles().get(playerUuid);
-                if (profile != null) {
-                    profile.setPlayerDeathsWitnessed(profile.getPlayerDeathsWitnessed() + 1);
-                    PlayerProfileManager.saveProfile(playerUuid, profile);
+        // Skip entirely when companion is in STOP mode
+        if (controller != null && controller.isStopped()) {
+            previousObservations.remove(playerUuid);
+            return;
+        }
+
+        PlayerSettings settings = mod.getPlayerSettingsMap().get(playerUuid);
+        boolean learningMode = settings == null || settings.isRlEnabled();
+
+        // If the LLM recently issued a direct command or feedback, yield to it:
+        // skip the Bellman update AND action selection for this tick.
+        if (controller != null && controller.hasLlmControlLock()) {
+            controller.decrementLlmControlLock();
+            previousObservations.remove(playerUuid);
+            return;
+        }
+
+        if (learningMode) {
+            // --- Learning mode: Bellman update + epsilon-greedy selection ---
+            CombatObservation prev = previousObservations.get(playerUuid);
+            if (prev != null) {
+                float reward = computeReward(prev, currentState, playerHp);
+                agent.update(prev.state, prev.action, reward, currentState);
+
+                if (reward <= -10.0f) {
+                    CompanionProfile profile = mod.getPlayerProfiles().get(playerUuid);
+                    if (profile != null) {
+                        profile.setPlayerDeathsWitnessed(profile.getPlayerDeathsWitnessed() + 1);
+                        PlayerProfileManager.saveProfile(playerUuid, profile);
+                    }
                 }
             }
         }
 
-        // RL przejmuje kontrole tylko gdy sa wrogie istoty w poblizu
         if (!currentState.hasCombatThreat()) {
             previousObservations.remove(playerUuid);
             return;
         }
 
-        RLAction chosenAction = agent.selectAction(currentState);
+        // Respect combatStance set by the player or LLM
+        CompanionProfile stanceProfile = mod.getPlayerProfiles().get(playerUuid);
+        String stance = (stanceProfile != null && stanceProfile.getCombatStance() != null)
+                ? stanceProfile.getCombatStance() : "AGRESYWNY";
+
+        if ("PASYWNY".equals(stance)) {
+            // Passive: only flee when HP is critical, otherwise do nothing
+            if (currentState.playerHpBucket() == 0 && controller != null) {
+                controller.applyRLAction("Flee");
+            }
+            previousObservations.remove(playerUuid);
+            return;
+        }
+
+        if ("DEFENSYWNY".equals(stance) && currentState.distanceBucket() > 0) {
+            // Defensive: only engage enemies that are very close (dist bucket 0)
+            previousObservations.remove(playerUuid);
+            return;
+        }
+
+        // In GUARD mode only engage threats within 6 blocks
+        if (controller != null && controller.isGuarding() && currentState.distanceBucket() > 0) {
+            previousObservations.remove(playerUuid);
+            return;
+        }
+
+        RLAction chosenAction = learningMode
+                ? agent.selectAction(currentState)      // epsilon-greedy, updates epsilon
+                : agent.inferBestAction(currentState);  // pure greedy, no side-effects
+
         applyAction(chosenAction, playerUuid, playerRef, playerEntityRef, store, currentState);
 
-        previousObservations.put(playerUuid, new CombatObservation(currentState, chosenAction, playerHp, playerMaxHp));
+        if (learningMode) {
+            previousObservations.put(playerUuid, new CombatObservation(currentState, chosenAction, playerHp, playerMaxHp));
+        } else {
+            previousObservations.remove(playerUuid);
+        }
 
-        PlayerSettings settings = mod.getPlayerSettingsMap().get(playerUuid);
         if (settings != null && settings.isDebugMode()) {
-            HytaleAIMod.LOGGER.info(agent.debugInfo(currentState) + " -> " + chosenAction);
+            HytaleAIMod.LOGGER.info((learningMode ? "[LEARN] " : "[INFER] ")
+                    + agent.debugInfo(currentState) + " -> " + chosenAction);
         }
     }
+
+    // ---- RL action dispatcher ----
 
     private void applyAction(RLAction action, UUID playerUuid, PlayerRef playerRef,
                               Ref<EntityStore> playerEntityRef, Store<EntityStore> store, RLState state) {
@@ -126,6 +188,7 @@ public class CompanionCombatSystem extends TickingSystem<EntityStore> {
                 controller.applyRLAction("Heal");
                 performHealing(playerEntityRef, store, playerRef, playerUuid);
             }
+            default -> controller.applyRLAction("Follow");
         }
     }
 
@@ -166,6 +229,8 @@ public class CompanionCombatSystem extends TickingSystem<EntityStore> {
             playerRef.sendMessage(Message.raw("[" + name + "] " + line));
         }
     }
+
+    // ---- State computation ----
 
     private RLState computeState(float playerHp, float playerMaxHp,
                                   Ref<EntityStore> playerEntityRef, Ref<EntityStore> companionRef,
@@ -223,6 +288,8 @@ public class CompanionCombatSystem extends TickingSystem<EntityStore> {
         return new float[]{health.get(), health.getMax()};
     }
 
+    // ---- Reward function ----
+
     private float computeReward(CombatObservation prev, RLState currentState, float currentPlayerHp) {
         float reward = 0.05f;
 
@@ -242,6 +309,12 @@ public class CompanionCombatSystem extends TickingSystem<EntityStore> {
             }
             case ATTACK -> {
                 if (prev.state.enemyCountBucket() == 0) reward -= 1.0f;
+                // Penalty for sprint-aggro: attacking enemies that are far away
+                if (prev.state.distanceBucket() == 2) reward -= 1.5f;
+            }
+            case FOLLOW -> {
+                // Reward for staying close to the player during combat
+                if (prev.state.distanceBucket() == 0) reward += 0.3f;
             }
             case FLEE -> {
                 if (prev.state.playerHpBucket() == 0 && prev.state.enemyCountBucket() >= 2) reward += 2.0f;
@@ -251,7 +324,7 @@ public class CompanionCombatSystem extends TickingSystem<EntityStore> {
                 if (prev.state.playerHpBucket() == 0 && !prev.state.hasCombatThreat()) reward += 2.0f;
                 else if (prev.state.playerHpBucket() >= 3) reward -= 1.0f;
             }
-            default -> { /* FOLLOW - neutralna */ }
+            default -> { /* unreachable */ }
         }
 
         return reward;

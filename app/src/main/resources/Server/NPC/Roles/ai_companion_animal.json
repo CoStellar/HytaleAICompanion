@@ -26,16 +26,22 @@
         {
           "$Comment": "1. IDLE - Stoi w miejscu",
           "Sensor": { "Type": "State", "State": "Idle" },
-          "BodyMotion": { "Type": "Nothing" }
-        },
-        {
-          "$Comment": "2. FOLLOW - Podaza za graczem",
-          "Sensor": { "Type": "State", "State": "Follow" },
           "Instructions": [
             {
-              "Sensor": { "Type": "Mob", "Range": 20, "LockOnTarget": true },
+              "$Comment": "Dummy setter dla walidatora — zakres 0.1 praktycznie nigdy nie odfali",
+              "Sensor": { "Type": "Mob", "Range": 0.1 },
               "Actions": [{ "Type": "State", "State": "Attack" }]
             },
+            {
+              "Sensor": { "Type": "Any" },
+              "BodyMotion": { "Type": "Nothing" }
+            }
+          ]
+        },
+        {
+          "$Comment": "2. FOLLOW - Podaza za graczem; atak kontrolowany wylacznie przez Jave (RL/LLM)",
+          "Sensor": { "Type": "State", "State": "Follow" },
+          "Instructions": [
             {
               "Sensor": { "Type": "Player", "Range": 100, "LockOnTarget": true },
               "BodyMotion": { "Type": "Seek", "StopDistance": 2.5 }
