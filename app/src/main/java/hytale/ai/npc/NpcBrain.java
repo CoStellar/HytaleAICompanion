@@ -73,13 +73,33 @@ public class NpcBrain {
 
         // ROZWINIĘTA ZASADA 4 - Instrukcja obsługi ciała dla LLM
         fullPrompt.append("ZASADA 4: Wybierz JEDNĄ akcję fizyczną ('action') z poniższej listy, która najlepiej pasuje do polecenia gracza lub sytuacji:\n");
-        fullPrompt.append("  - FOLLOW : Podążaj za graczem (domyślny stan podczas podróży).\n");
-        fullPrompt.append("  - STAY   : Zatrzymaj się, stój w miejscu, przestań podążać, czekaj na rozkazy.\n");
-        fullPrompt.append("  - ATTACK : Zaatakuj wroga (musisz podać jego nazwę w 'action_target').\n");
-        fullPrompt.append("  - FLEE   : Uciekaj w panice (tylko w obliczu śmiertelnego zagrożenia).\n");
-        fullPrompt.append("  - HEAL   : Ulecz gracza lub siebie, jeśli ktoś ma krytycznie mało HP.\n");
+        fullPrompt.append("  - FOLLOW  : Podążaj za graczem (domyślny stan podczas podróży).\n");
+        fullPrompt.append("  - STAY    : Zatrzymaj się, stój w miejscu, przestań podążać, czekaj na rozkazy.\n");
+        fullPrompt.append("  - ATTACK  : Zaatakuj wroga (musisz podać jego nazwę w 'action_target').\n");
+        fullPrompt.append("  - FLEE    : Uciekaj w panice (tylko w obliczu śmiertelnego zagrożenia).\n");
+        fullPrompt.append("  - HEAL    : Ulecz gracza lub siebie, jeśli ktoś ma krytycznie mało HP.\n");
+        fullPrompt.append("  - GUARD   : Trzymaj się blisko gracza i atakuj tylko gdy wróg zaatakuje gracza lub ciebie.\n");
+        fullPrompt.append("  - STOP    : Stój w miejscu, nie podążaj za graczem aż do odwołania.\n");
+        fullPrompt.append("  - PROTECT : Stań między graczem a wrogami, przejmij ciosy na siebie.\n");
 
-        fullPrompt.append("ZASADA 5: Twoje przemyślenia muszą być podzielone na obserwację ('observation') i wnioski ('reasoning').\n\n");
+        fullPrompt.append("ZASADA 5: Twoje przemyślenia muszą być podzielone na obserwację ('observation') i wnioski ('reasoning').\n");
+        fullPrompt.append("ZASADA 6: Jeśli wiadomość gracza wyraźnie chwali lub krytykuje ostatnie zachowanie kompana, wypełnij\n");
+        fullPrompt.append("  pola feedback_type (\"POSITIVE\"/\"NEGATIVE\"), feedback_action (np. \"ATTACK\") i feedback_strength (1.0-3.0).\n");
+        fullPrompt.append("  W przeciwnym razie pozostaw te pola jako null i 0.\n");
+        fullPrompt.append("  Przykłady:\n");
+        fullPrompt.append("    \"przestań atakować wszystko\" → NEGATIVE, ATTACK, 2.0\n");
+        fullPrompt.append("    \"dobra robota przy leczeniu\" → POSITIVE, HEAL, 1.5\n");
+        fullPrompt.append("    \"jak się masz?\"             → null (zwykła rozmowa, brak feedbacku)\n\n");
+        fullPrompt.append("ZASADA 7: Jeśli gracz wyraźnie prosi o zmianę nastawienia bojowego, wypełnij pole 'set_stance':\n");
+        fullPrompt.append("  - PASYWNY   : nie atakuj z własnej inicjatywy, unikaj walki.\n");
+        fullPrompt.append("  - DEFENSYWNY: atakuj tylko gdy wróg jest bezpośrednio blisko gracza.\n");
+        fullPrompt.append("  - AGRESYWNY : atakuj wszystkich pobliskich wrogów.\n");
+        fullPrompt.append("  Przykłady:\n");
+        fullPrompt.append("    \"bądź agresywny\" → set_stance: \"AGRESYWNY\"\n");
+        fullPrompt.append("    \"zostań defensywny\" → set_stance: \"DEFENSYWNY\"\n");
+        fullPrompt.append("    \"nie atakuj niczego\" → set_stance: \"PASYWNY\"\n");
+        fullPrompt.append("  W przeciwnym razie pozostaw set_stance jako null.\n\n");
+
         // Definicja oczekiwanego formatu
         fullPrompt.append("--- WYMAGANA STRUKTURA JSON ---\n");
         fullPrompt.append("{\n");
@@ -89,7 +109,11 @@ public class NpcBrain {
         fullPrompt.append("  },\n");
         fullPrompt.append("  \"dialogue\": \"To co powiesz na czacie. Tylko to zobaczy gracz.\",\n");
         fullPrompt.append("  \"action\": \"WYBRANA_AKCJA\",\n");
-        fullPrompt.append("  \"action_target\": \"CEL_LUB_NONE\"\n");
+        fullPrompt.append("  \"action_target\": \"CEL_LUB_NONE\",\n");
+        fullPrompt.append("  \"feedback_type\": null,\n");
+        fullPrompt.append("  \"feedback_action\": null,\n");
+        fullPrompt.append("  \"feedback_strength\": 0,\n");
+        fullPrompt.append("  \"set_stance\": null\n");
         fullPrompt.append("}\n\n");
 
         // ==========================================
@@ -114,15 +138,32 @@ public class NpcBrain {
                 fullPrompt.append("- ").append(quirk).append("\n");
             }
         }
-        fullPrompt.append("\nTwoje nastawienie do walki to: ").append(profile.getCombatStance()).append(".\n\n");
+        fullPrompt.append("\nAktualne nastawienie bojowe: ").append(profile.getCombatStance())
+                  .append(" (mozesz zmienic przez set_stance jesli gracz poprosil).\n\n");
 
         // ==========================================
-        // 3. KONTEKST ŚRODOWISKOWY
+        // 3. WIEDZA O ŚWIECIE (LORE)
+        // ==========================================
+        fullPrompt.append("--- TWOJA WIEDZA O ŚWIECIE ORBIS ---\n");
+        fullPrompt.append("Mieszkasz w świecie zwanym Orbis — ogromnym kontynencie pełnym tajemnic i niebezpieczeństw.\n");
+        fullPrompt.append("Znasz następujące krainy:\n");
+        fullPrompt.append("- Outlands (Strefa 1): rozległe łąki i lasy, ojczyzna Kweebecow (małych, przyjaznych pomarańczowych stworzen),\n");
+        fullPrompt.append("  Trorkow (agresywnych zielonych goblinopodobnych), Kostnych Orków i innych stworzen. To tu zaczynacie przygodę.\n");
+        fullPrompt.append("- Howling Sands (Strefa 2): suche pustynie z ruinami starożytnych cywilizacji i groźnymi pustelnymi stworami.\n");
+        fullPrompt.append("- Borea (Strefa 3): zamarznięta tundra skuta lodem, zamieszkana przez bestie z mroźnych szczytow.\n");
+        fullPrompt.append("- Emerald Vale (Strefa 4): bujne zielone doliny skrywające wielkie sekrety.\n");
+        fullPrompt.append("Starożytni (Ancients) — zaawansowana cywilizacja, ktorej ruiny i artefakty rozsiane są po calym Orbis.\n");
+        fullPrompt.append("Varyni — mroczna siła zagrażająca całemu światu, sterująca hordami potworow.\n");
+        fullPrompt.append("Gracze to Odkrywcy (Adventurers) przybyłe z zewnątrz, aby zbadać Orbis i stawić czoła Varynom.\n");
+        fullPrompt.append("Jako kompan znasz te krainy i możesz o nich opowiadać, ostrzegać przed zagrożeniami i dzielić się wiedzą.\n\n");
+
+        // ==========================================
+        // 4. KONTEKST ŚRODOWISKOWY
         // ==========================================
         fullPrompt.append(worldContext);
 
         // ==========================================
-        // 4. PAMIĘĆ KRÓTKOTRWAŁA (HISTORYCZNE JSONY)
+        // 5. PAMIĘĆ KRÓTKOTRWAŁA (HISTORYCZNE JSONY)
         // ==========================================
         LinkedList<String> history = profile.getChatHistory();
         if (history != null && !history.isEmpty()) {
@@ -134,7 +175,7 @@ public class NpcBrain {
         }
 
         // ==========================================
-        // 5. BIEŻĄCE ZAPYTANIE
+        // 6. BIEŻĄCE ZAPYTANIE
         // ==========================================
         fullPrompt.append("--- OBECNE ZAPYTANIE GRACZA ---\n");
         fullPrompt.append("Gracz (").append(playerName).append("): ").append(prompt);
@@ -146,7 +187,7 @@ public class NpcBrain {
         }
 
         // ==========================================
-        // 6. WYSYŁKA I DESERIALIZACJA
+        // 7. WYSYŁKA I DESERIALIZACJA
         // ==========================================
         return provider.generateResponse(fullPrompt.toString()).thenApply(rawResponse -> {
 
@@ -165,7 +206,8 @@ public class NpcBrain {
                         new AiActionResponse.ThoughtProcess("Błąd odczytu struktury", "Model AI wygenerował uszkodzony JSON."),
                         "Wybacz szefie, zamyśliłem się! Możesz powtórzyć?",
                         "NONE",
-                        "NONE"
+                        "NONE",
+                        null, null, 0.0f, null
                 );
             }
 

@@ -1,0 +1,36 @@
+Group #CompanionHud {
+    Anchor: (Bottom: 200, Left: 10, Width: 190, Height: 120);
+    Background: PatchStyle(Color: #1a1a2e(0.85));
+    Padding: (Full: 8);
+    LayoutMode: Top;
+
+    Label #CompanionName {
+        Text: "Kompan";
+        Anchor: (Height: 20);
+        Style: (FontSize: 14, TextColor: #ffffff, RenderBold: true);
+    }
+    Group { Anchor: (Height: 3); }
+    Label #CompanionState {
+        Text: "Stan: ?";
+        Anchor: (Height: 16);
+        Style: (FontSize: 13, TextColor: #96a9be);
+    }
+    Group { Anchor: (Height: 2); }
+    Label #StanceLabel {
+        Text: "?";
+        Anchor: (Height: 16);
+        Style: (FontSize: 13, TextColor: #96a9be);
+    }
+    Group { Anchor: (Height: 2); }
+    Label #RlStatus {
+        Text: "RL: WYL";
+        Anchor: (Height: 16);
+        Style: (FontSize: 13, TextColor: #96a9be);
+    }
+    Group { Anchor: (Height: 2); }
+    Label #HpLabel {
+        Text: "HP: --";
+        Anchor: (Height: 16);
+        Style: (FontSize: 13, TextColor: #96a9be);
+    }
+}

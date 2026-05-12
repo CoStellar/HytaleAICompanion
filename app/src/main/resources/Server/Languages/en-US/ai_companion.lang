@@ -1,0 +1,32 @@
+# === ai_companion ===
+
+# -rl command
+ai_companion.command.rl.usage = [System] Usage: !ai -rl <on|off>
+ai_companion.command.rl.noSettings = [System] No settings found. Use !ai -setup <key> first.
+ai_companion.command.rl.enabled = [System] Q-Learning: ON
+ai_companion.command.rl.disabled = [System] Q-Learning: OFF
+
+# Feedback confirmation (sent when LLM applies manual reward to Q-table)
+ai_companion.feedback.remembered = [{name}] I'll remember that.
+
+# !ai -info RL status line
+ai_companion.info.rl = [RL] Status: {status} | Decisions: {decisions} | Epsilon: {epsilon}
+
+# !ai -ui panel — section headers
+ai_companion.ui.title              = Companion Panel
+ai_companion.ui.section.chat       = Message
+ai_companion.ui.section.stance     = Combat stance
+ai_companion.ui.section.controls   = Controls
+ai_companion.ui.section.model      = AI Model
+
+# !ai -ui panel — buttons
+ai_companion.ui.send               = Send
+ai_companion.ui.summon             = Summon
+ai_companion.ui.dismiss            = Dismiss
+ai_companion.ui.stance.passive     = Passive
+ai_companion.ui.stance.defensive   = Defensive
+ai_companion.ui.stance.aggressive  = Aggressive
+ai_companion.ui.chat.placeholder   = Type a message...
+
+# !ai -ui command errors
+ai_companion.command.ui.noRef      = [System] Could not resolve player entity.

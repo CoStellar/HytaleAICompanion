@@ -1,0 +1,127 @@
+$C = "../Common.ui";
+
+Group #Root {
+    Anchor: (Full: 0);
+    Background: PatchStyle(Color: #000000(0.6));
+    LayoutMode: CenterMiddle;
+
+    Group #Panel {
+        Anchor: (Width: 500, Height: 470);
+        Background: PatchStyle(Color: #1a1a2e(0.95));
+        Padding: (Full: 12);
+        LayoutMode: Top;
+
+        Group {
+            Anchor: (Height: 32);
+            LayoutMode: Left;
+
+            Label #Title {
+                Text: "AI Companion";
+                Anchor: (Height: 32);
+                FlexWeight: 1;
+                Style: (FontSize: 18, TextColor: #ffffff, VerticalAlignment: Center, RenderBold: true);
+            }
+            $C.@SmallSecondaryTextButton #CloseBtn {
+                @Text = "X";
+                Anchor: (Width: 32, Height: 32);
+            }
+        }
+
+        Group { Anchor: (Height: 8); }
+
+        Label #StatusLine1 {
+            Text: "Stan: ?";
+            Anchor: (Height: 18);
+            Style: (FontSize: 14, TextColor: #96a9be);
+        }
+        Group { Anchor: (Height: 2); }
+        Label #StatusLine2 {
+            Text: "-";
+            Anchor: (Height: 16);
+            Style: (FontSize: 13, TextColor: #96a9be);
+        }
+
+        Group { Anchor: (Height: 8); }
+
+        Group {
+            Anchor: (Height: 38);
+            LayoutMode: Left;
+
+            $C.@TextField #ChatInput {
+                FlexWeight: 1;
+                PlaceholderText: "Napisz wiadomosc...";
+            }
+            Group { Anchor: (Width: 6); }
+            $C.@TextButton #SendBtn {
+                @Text = "Wyslij";
+                Anchor: (Width: 80, Height: 38);
+            }
+        }
+
+        Group { Anchor: (Height: 6); }
+
+        Group {
+            Anchor: (Height: 44);
+            LayoutMode: Left;
+
+            $C.@SecondaryTextButton #StancePassiveBtn {
+                @Text = "Pasywny";
+                Anchor: (Width: 150, Height: 44);
+            }
+            Group { Anchor: (Width: 4); }
+            $C.@SecondaryTextButton #StanceDefensiveBtn {
+                @Text = "Defensywny";
+                Anchor: (Width: 160, Height: 44);
+            }
+            Group { Anchor: (Width: 4); }
+            $C.@SecondaryTextButton #StanceAggressiveBtn {
+                @Text = "Agresywny";
+                Anchor: (Width: 150, Height: 44);
+            }
+        }
+
+        Group { Anchor: (Height: 6); }
+
+        Group {
+            Anchor: (Height: 44);
+            LayoutMode: Left;
+
+            $C.@TextButton #SummonBtn {
+                @Text = "Przywolaj";
+                Anchor: (Width: 150, Height: 44);
+            }
+            Group { Anchor: (Width: 4); }
+            $C.@SecondaryTextButton #RlBtn {
+                @Text = "RL: WYL";
+                Anchor: (Width: 100, Height: 44);
+            }
+            Group { Anchor: (Width: 4); }
+            $C.@SecondaryTextButton #DebugBtn {
+                @Text = "Debug: WYL";
+                Anchor: (Width: 120, Height: 44);
+            }
+        }
+
+        Group { Anchor: (Height: 6); }
+
+        Group {
+            Anchor: (Height: 44);
+            LayoutMode: Left;
+
+            $C.@SecondaryTextButton #ModelFlashBtn {
+                @Text = "2.5 Flash";
+                Anchor: (Width: 150, Height: 44);
+            }
+            Group { Anchor: (Width: 4); }
+            $C.@SecondaryTextButton #ModelFlash20Btn {
+                @Text = "2.0 Flash";
+                Anchor: (Width: 150, Height: 44);
+            }
+            Group { Anchor: (Width: 4); }
+            $C.@SecondaryTextButton #ModelProBtn {
+                @Text = "1.5 Pro";
+                Anchor: (Width: 150, Height: 44);
+            }
+        }
+    }
+}

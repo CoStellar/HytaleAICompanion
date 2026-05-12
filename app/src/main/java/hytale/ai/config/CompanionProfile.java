@@ -16,7 +16,7 @@ public class CompanionProfile {
     private String roleId = "ai_companion";
     private String personality;
     private boolean isSummoned = false;
-    private int randomnessLevel = 0;
+    private int randomnessLevel = 2; // default: medium quirk budget (4 pts)
     private String combatStance = "PASYWNY";
     private long deathTimestamp = 0;
     private List<String> quirks = new ArrayList<>();

@@ -1,0 +1,12 @@
+Group #RespawnHud {
+    Anchor: (Bottom: 200, Left: 10, Width: 190, Height: 40);
+    Background: PatchStyle(Color: #1a1a2e(0.85));
+    Padding: (Full: 8);
+    LayoutMode: Top;
+
+    Label #RespawnLabel {
+        Text: "Kompan odpoczywa";
+        Anchor: (Height: 20);
+        Style: (FontSize: 13, TextColor: #96a9be);
+    }
+}

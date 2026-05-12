@@ -35,3 +35,5 @@ CLAUDE.md
 next-session.md
 Hytale-Mod-Agent/
 DecompiledHytaleServer/
+.gitignore
+TODO_UI_REFACTOR.md

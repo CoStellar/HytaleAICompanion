@@ -43,6 +43,8 @@ public class CommandManager {
         commands.put("-models", new ModelsCommand());
         commands.put("-clearmap", new ClearMapCommand());
         commands.put("-debug", new DebugCommand());
+        commands.put("-rl", new RlCommand());
+        commands.put("-ui", new UiCommand());
     }
 
     public Map<String, AICommand> getRegisteredCommands() {
